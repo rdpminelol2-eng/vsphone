@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v7.5
-Fixes: CPU stats, Delta key (Receive Key tap + Chrome grab), white screen on am start
+VSPhone Roblox Auto Relauncher v7.9
+Fixes: Full image recognition for Delta key (Receive Key + KEY_example + Continue) using your exact button images
 """
 import os, sys, time, subprocess, re, signal, threading
 import sqlite3 as _sq3
@@ -15,11 +15,80 @@ except ImportError:
     print("Missing packages. Run: pip install colorama pyyaml")
     sys.exit(1)
 
+# ── Image Recognition for Delta Key Dialog (most reliable method) ────────────
+try:
+    import cv2
+    import numpy as np
+    from PIL import Image
+    HAS_OPENCV = True
+except ImportError:
+    HAS_OPENCV = False
+
+def click_image(template_path: str, threshold: float = 0.80, max_attempts: int = 6) -> bool:
+    """
+    Find and tap using image recognition (auto-downloads templates).
+    """
+    if not HAS_OPENCV:
+        return False
+
+    download_key_templates()
+
+    if not os.path.exists(template_path):
+        warn(f"Template missing: {template_path}")
+        return False
+
+    for attempt in range(max_attempts):
+        # Take fresh screenshot
+        sh("screencap -p /sdcard/_vsphone_key_screen.png", silent=True, timeout=4)
+        time.sleep(0.25)
+
+        screen = cv2.imread("/sdcard/_vsphone_key_screen.png", cv2.IMREAD_COLOR)
+        template = cv2.imread(template_path, cv2.IMREAD_COLOR)
+
+        if screen is None or template is None:
+            time.sleep(0.3)
+            continue
+
+        # Template matching
+        result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+
+        if max_val >= threshold:
+            h, w = template.shape[:2]
+            cx = max_loc[0] + w // 2
+            cy = max_loc[1] + h // 2
+            sh(f"input tap {cx} {cy}", silent=True)
+            info(f"✅ Image match! Tapped button at ({cx},{cy}) | confidence={max_val:.2f}")
+            time.sleep(0.6)
+            return True
+
+        time.sleep(0.5)
+    return False
+
+
+def download_key_templates():
+    """Download all three button images from hardcoded URLs"""
+    templates = {
+        "/sdcard/receive_key.png": RECEIVE_KEY_URL,
+        "/sdcard/key_example.png": KEY_EXAMPLE_URL,
+        "/sdcard/continue_button.png": CONTINUE_URL,
+    }
+
+    for path, url in templates.items():
+        if os.path.exists(path) and os.path.getsize(path) > 300:
+            continue  # already good
+
+        info(f"Downloading {os.path.basename(path)} ...")
+        sh(f"curl -L -o '{path}' '{url}' 2>/dev/null", silent=True, timeout=15)
+
+    return True
+
+
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "7.5"
+VERSION = "7.9"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -57,6 +126,11 @@ CHROME_URL_BAR_IDS = [
 ]
 
 KEY_PATTERN = re.compile(r"FREE_[A-Za-z0-9_\-]{10,}")
+
+# ── Hardcoded button images (user provided via imgbb) ────────────────────────
+RECEIVE_KEY_URL = "https://ibb.co/v4v7Df6M"
+KEY_EXAMPLE_URL = "https://ibb.co/45nDH2W"
+CONTINUE_URL    = "https://ibb.co/nqjvJHz0"
 
 KW_PERMISSION = ["Continue", "CONTINUE", "Allow", "ALLOW", "Next", "OK", "Ok",
                  "Accept", "Grant", "GOT IT", "Got it", "DONE", "Done",
@@ -939,19 +1013,26 @@ def grab_key_from_chrome() -> str:
 
 def _enter_stored_key(key: str) -> str:
     info(f"Entering key: {CY}{key[:20]}…{RS}")
-    # Click KEY_Example / key input field (simple & reliable — searches full screen)
-    tapped_input = tap_element(KW_KEY_INPUT)
-    if not tapped_input:
-        # Fallback: any input-like field
-        tap_element(["key", "example", "input", "paste", "enter key", "text field"])
-    time.sleep(0.7)  # give it time to focus
-    # Paste the key (clipboard is fastest & most reliable on Android)
+
+    # 1. Click KEY_example textbox using image
+    if not click_image("/sdcard/key_example.png", threshold=0.78):
+        # fallback tap
+        sh("input tap 540 960", silent=True)
+        time.sleep(0.5)
+
+    time.sleep(0.6)
+
+    # 2. Paste the key
     _set_clipboard(key)
     time.sleep(0.3)
     sh("input keyevent KEYCODE_PASTE", silent=True)
     time.sleep(0.5)
-    # Tap Continue / Submit (simple)
-    tap_element(KW_KEY_SUBMIT)
+
+    # 3. Click Continue button using image
+    if not click_image("/sdcard/continue_button.png", threshold=0.78):
+        sh("input tap 540 1120", silent=True)
+        time.sleep(0.4)
+
     time.sleep(1.2)
     return "entered"
 
@@ -981,58 +1062,18 @@ def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
         warn(f"[{label}] Key dialog not visible after bring_to_front — skipping")
         return "waiting"
 
-    # ── Step 3: Tap "Receive Key" — ULTRA AGGRESSIVE full-screen search ─────
-    info(f"[{label}] Looking for 'Receive Key' button (full screen search)...")
-    tapped = False
-    for attempt in range(20):  # much more persistent
-        xml = get_xml()
-
-        # Method 1: Full screen search (ignores clickable flag)
-        pos = find_element(KW_KEY_RECEIVE + ["receive key", "receive", "get key"], clickable=False, xml=xml)
-        if pos:
-            sh(f"input tap {pos[0]} {pos[1]}", silent=True)
-            info(f"[{label}] Tapped 'Receive Key' at {pos} (attempt {attempt+1})")
-            tapped = True
-            time.sleep(1.2)  # wait for Chrome to start opening
-            break
-
-        # Method 2: Also try via tap_element (extra chance)
-        if tap_element(KW_KEY_RECEIVE):
-            info(f"[{label}] Tapped 'Receive Key' via tap_element (attempt {attempt+1})")
-            tapped = True
-            time.sleep(1.2)
-            break
-
-        # Method 3: Last resort - tap any node containing "receive" or "key" near bottom of screen
-        # (helps when uiautomator misses the exact button)
-        try:
-            root = ET.fromstring(xml)
-            for node in root.iter("node"):
-                txt = (node.get("text","") + " " + node.get("content-desc","")).lower()
-                if "receive" in txt or ("key" in txt and "example" not in txt):
-                    nums = re.findall(r"\d+", node.get("bounds", ""))
-                    if len(nums) == 4:
-                        cx = (int(nums[0]) + int(nums[2])) // 2
-                        cy = (int(nums[1]) + int(nums[3])) // 2
-                        if cy > 800:  # likely in lower half of dialog
-                            sh(f"input tap {cx} {cy}", silent=True)
-                            info(f"[{label}] Fallback tapped possible Receive Key area")
-                            tapped = True
-                            time.sleep(1.2)
-                            break
-            if tapped:
-                break
-        except:
-            pass
-
-        time.sleep(0.7)
-
-    if not tapped:
-        warn(f"[{label}] 'Receive Key' still not found after 20 attempts. Dialog may be blocked or XML incomplete.")
-        # Try one last broad tap on common Receive Key area (center-right of screen)
-        sh("input tap 900 1400", silent=True)
-        time.sleep(1)
-        return "waiting"
+    # ── Step 3: Tap "Receive Key" using IMAGE RECOGNITION ─────────────────
+    info(f"[{label}] Tapping Receive Key with image recognition...")
+    if click_image("/sdcard/receive_key.png", threshold=0.78):
+        tapped = True
+        time.sleep(1.8)  # give Chrome time to open
+    else:
+        warn(f"[{label}] Image match failed for Receive Key — using coordinate fallback")
+        sh("input tap 540 1380", silent=True)
+        time.sleep(0.8)
+        sh("input tap 540 1420", silent=True)
+        tapped = True
+        time.sleep(1.5)
 
     # ── Step 4: Wait for Chrome to open ───────────────────────────────────
     chrome_pkg = get_chrome_pkg()
