@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════════════╗
-║ VSPhone Roblox Auto Relauncher v6.3              ║
+║ VSPhone Roblox Auto Relauncher v6.4              ║
 ║ Created by IWZVC • Termux • Rooted               ║
 ╚══════════════════════════════════════════════════╝
-v6.3 — Fixed has_captcha + Manual per-package Cookie + Auto-flow AIO
+v6.4 — Fixed Noka deletion + Proper missing slot detection
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -24,7 +24,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.3"
+VERSION = "6.4"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -290,6 +290,26 @@ def pkg_label(pkg: str, idx: int) -> str:
     if m: return f"Noka {m.group(1)}"
     return f"Noka {idx + 1}"
 
+# === NEW: Smart Slot Detection (fixes deletion + wrong numbering) ===
+def get_installed_noka_numbers():
+    pkgs = detect_packages()
+    numbers = []
+    for pkg in pkgs:
+        m = re.search(r'(\d+)', pkg)
+        if m:
+            numbers.append(int(m.group(1)))
+    return sorted(set(numbers))
+
+def get_next_available_slots(want):
+    installed = get_installed_noka_numbers()
+    missing = []
+    i = 1
+    while len(missing) < want:
+        if i not in installed:
+            missing.append(i)
+        i += 1
+    return missing
+
 def install_aotr_trackstat():
     folder = Path(DELTA_AUTOEXEC_PATH)
     try:
@@ -298,10 +318,10 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.3
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.4
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
-local function getStats()
+local function getStats():
     local plr = game.Players.LocalPlayer
     local gold = (plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Gold") and plr.leaderstats.Gold.Value) or 0
     local gems = (plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Gems") and plr.leaderstats.Gems.Value) or 0
@@ -333,7 +353,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.3 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.4 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -385,9 +405,14 @@ def install_apks(pause=True):
         ok("All 10 slots full.")
         if pause: go()
         return
+    
     want_raw = input(Y + f" How many to install? (1-{can_add}): " + W).strip()
     want = min(int(want_raw) if want_raw.isdigit() else 1, can_add)
-    needed_slots = list(range(already + 1, already + 1 + want))
+    
+    # === SMART SLOT DETECTION (FIX) ===
+    needed_slots = get_next_available_slots(want)
+    print(); info(f"Will install into missing slots: {CY}{needed_slots}{RS}")
+    
     print(); info("Scanning Downloads for existing Noka APKs…")
     noka_map = scan_noka_apks()
     if noka_map:
@@ -396,6 +421,7 @@ def install_apks(pause=True):
             print(W + f" #{CY}{n}{W} {DIM}{apk.name}{RS}")
     else:
         warn("No Noka APKs found in Downloads.")
+    
     missing = [s for s in needed_slots if s not in noka_map]
     if missing:
         print(); warn(f"Still need: slot(s) {CY}{missing}")
@@ -407,6 +433,7 @@ def install_apks(pause=True):
             info("Skipping GoFile — installing whatever is available.")
     else:
         print(); ok("All needed APKs already in Downloads — skipping GoFile.")
+    
     print()
     installed_any = False
     for idx, slot in enumerate(needed_slots):
@@ -916,7 +943,7 @@ def begin_auto_relaunch():
 def aio():
     banner(); hdr("AIO — Full Setup & Auto Relaunch")
     info("Step 1/4: Installing APKs…")
-    install_apks(pause=False)   # Auto continue — no Press Enter
+    install_apks(pause=False)
     print()
     info("Step 2/4: Cookie Login…")
     cookies = read_cookies()
