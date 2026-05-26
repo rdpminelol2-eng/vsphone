@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.17
-- Key handling now works during BOOTING phase (key dialogs appear very early)
-- CPU shows correct multi-core % (800% = 8 cores at 100%)
-- All previous fixes + verbose logging
+VSPhone Roblox Auto Relauncher v6.18
+- CPU now shows 0-100% like Windows (capped)
+- Reverted BOOTING check (only LIVE as requested)
+- Grab key once → apply to all tabs (planned for v6.19 if still needed)
 """
 import os, sys, time, subprocess, re, signal, threading
 import sqlite3 as _sq3
@@ -19,7 +19,7 @@ except ImportError:
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
-VERSION = "6.17"
+VERSION = "6.18"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -114,7 +114,8 @@ def get_system_stats():
         # Improved CPU parsing for multi-core devices (shows total % across all cores)
         cpu_raw = sh("top -n 1 -b 2>/dev/null | head -8", capture=True, timeout=3)
         cpu_match = re.search(r'(\d+)%\s+user', cpu_raw, re.I) or re.search(r'(\d+)%', cpu_raw)
-        cpu_usage = cpu_match.group(1) + "%" if cpu_match else "N/A"
+        raw_cpu = int(cpu_match.group(1)) if cpu_match else 0
+        cpu_usage = str(min(raw_cpu, 100)) + "%" if cpu_match else "N/A"  # Windows-style 0-100%
        
         return f"CPU: {cpu_usage} RAM: {ram}"
     except:
@@ -978,7 +979,7 @@ def begin_auto_relaunch():
             if now - key_full_check_at > 18:
                 info("Checking all clones for stuck key dialogs...")
                 for p in pkgs:
-                    if state[p]["status"] in ("LIVE", "BOOTING"):
+                    if state[p]["status"] == "LIVE":
                         sh(f"am start {p}", silent=True)
                         time.sleep(1.2)
                         if has_key_dialog():
