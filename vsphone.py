@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.20
-- Direct key handling (no more status delay) — should finally tap & grab when detected
-- Grab once → apply to all (from v6.19)
-- CPU 0-100% like Windows
+VSPhone Roblox Auto Relauncher v6.22
+- Fallback blind taps at common button positions (when uiautomator can't see floating windows)
+- 5x retry + grab once for all
 """
 import os, sys, time, subprocess, re, signal, threading
 import sqlite3 as _sq3
@@ -19,7 +18,7 @@ except ImportError:
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
-VERSION = "6.20"
+VERSION = "7.0"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -764,37 +763,71 @@ def _read_clipboard() -> str:
     out = sh("content query --uri content://com.android.clipboard/clip", capture=True, timeout=5)
     m = re.search(r"text=([^\s,]+)", out)
     return m.group(1).strip() if m else ""
-def grab_key_from_chrome():
+def focus_floating_window(pkg: str) -> bool:
+    """
+    Floating windows don't get focus from am start alone.
+    We force-focus by sending a tap to where the window likely sits,
+    then verify uiautomator can actually see its contents.
+    """
+    sh(f"am start {pkg}", silent=True)
+    time.sleep(1.5)
+    for tap_x, tap_y in [(620, 300), (500, 250), (700, 350)]:
+        sh(f"input tap {tap_x} {tap_y}", silent=True)
+        time.sleep(0.5)
+        xml = get_xml()
+        if any(k in xml.lower() for k in ["receive key", "welcome back", "key system", "getkey"]):
+            return True
+    time.sleep(1)
     xml = get_xml()
-   
-    m = re.search(r"FREE_[A-Za-z0-9_-]{20,}", xml)
-    if m:
-        key = m.group(0)
-        info(f"Key found on screen: {CY}{key[:22]}…{RS}")
-        tap_element(["Copy", "COPY", "copy"])
-        time.sleep(0.8)
-        return key
-   
-    clip = _read_clipboard()
-    if clip.startswith(KEY_PREFIX):
-        info(f"Key from clipboard: {CY}{clip[:22]}…{RS}")
-        return clip
-   
-    if tap_element(["Copy", "COPY", "copy"]):
-        time.sleep(1)
+    return any(k in xml.lower() for k in ["receive key", "welcome back", "key system"])
+
+def tap_in_floating_window(terms: list, pkg: str) -> bool:
+    for attempt in range(5):
+        pos = find_element(terms, clickable=True)
+        if pos:
+            sh(f"input tap {pos[0]} {pos[1]}", silent=True)
+            time.sleep(0.7)
+            return True
+        sh(f"input tap 620 300", silent=True)
+        time.sleep(0.6)
+    return False
+
+def grab_key_from_chrome():
+    for scroll_attempt in range(6):
+        xml = get_xml()
+        m = re.search(r"FREE_[A-Za-z0-9_-]{20,}", xml)
+        if m:
+            key = m.group(0)
+            info(f"Key found on screen: {CY}{key[:22]}…{RS}")
+            tap_element(["Copy", "COPY", "copy"])
+            time.sleep(0.8)
+            return key
         clip = _read_clipboard()
         if clip.startswith(KEY_PREFIX):
+            info(f"Key from clipboard: {CY}{clip[:22]}…{RS}")
             return clip
-   
-    # Long press fallback
-    pos = find_element(["FREE_", "key"], clickable=True)
-    if pos:
-        sh(f"input swipe {pos[0]} {pos[1]} {pos[0]} {pos[1]} 800", silent=True)
-        time.sleep(1)
-        clip = _read_clipboard()
-        if clip.startswith(KEY_PREFIX):
-            return clip
-   
+        if tap_element(["Copy", "COPY", "copy"]):
+            time.sleep(1)
+            clip = _read_clipboard()
+            if clip.startswith(KEY_PREFIX):
+                return clip
+        pos = find_element(["FREE_", "key", "checkpoint"], clickable=True)
+        if pos:
+            sh(f"input swipe {pos[0]} {pos[1]} {pos[0]} {pos[1]} 800", silent=True)
+            time.sleep(1)
+            clip = _read_clipboard()
+            if clip.startswith(KEY_PREFIX):
+                return clip
+        tapped_intermediate = tap_element([
+            "Continue", "CONTINUE", "Get Key", "GET KEY", "Skip", "SKIP",
+            "Verify", "VERIFY", "Click here", "Proceed", "Next", "tap here"
+        ])
+        if tapped_intermediate:
+            info(f"Chrome: tapped intermediate button (attempt {scroll_attempt+1})")
+            time.sleep(3)
+        else:
+            sh("input swipe 540 700 540 300 400", silent=True)
+            time.sleep(2)
     return ""
 def has_key_dialog() -> bool:
     xml = get_xml().lower()
@@ -833,13 +866,25 @@ def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
         info(f"[{label}] No stored key — grabbing from Chrome…")
    
     info(f"[{label}] Tapping 'Receive Key' button...")
-    tapped = tap_element(KW_KEY_RECEIVE)
-    if not tapped:
-        tapped = tap_element(["receive", "getkey", "get key", "Receive Key"])
+    tapped = False
+    for _ in range(5):  # Aggressive retry for floating windows
+        tapped = tap_element(KW_KEY_RECEIVE) or tap_element(["receive", "getkey", "get key", "Receive Key"])
+        if tapped:
+            break
+        time.sleep(0.4)
     if tapped:
         info(f"[{label}] Tapped Receive Key successfully — waiting for Chrome...")
     else:
-        warn(f"[{label}] Could not tap Receive Key button!")
+        warn(f"[{label}] uiautomator couldn't see the button — trying fallback taps...")
+        for x, y in [(540, 1600), (720, 1800), (400, 1500), (600, 1700)]:  # Likely positions for "Receive Key" on most phones
+            sh(f"input tap {x} {y}", silent=True)
+            time.sleep(0.6)
+            if not has_key_dialog():  # Dialog disappeared = success
+                tapped = True
+                info(f"[{label}] Fallback tap at ({x},{y}) worked!")
+                break
+        if not tapped:
+            warn(f"[{label}] All taps failed — please tap 'Receive Key' manually once so the script can grab the key from Chrome")
    
     # Wait for Chrome to fully load the key page
     time.sleep(7)
