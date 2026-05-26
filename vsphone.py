@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.8
-Fixed GoFile + All functions complete
+VSPhone Roblox Auto Relauncher v6.9
+Fixed: Invalid input + Reliable GoFile opening
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -21,7 +21,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.8"
+VERSION = "6.9"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -318,7 +318,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.8
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.9
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats():
@@ -353,7 +353,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.8 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.9 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -419,13 +419,17 @@ def install_apks(pause=True):
     missing = [s for s in needed_slots if s not in noka_map]
     if missing:
         print(); warn(f"Still need: slot(s) {CY}{missing}")
-        if input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower() != "n":
+        choice = input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower()
+        if choice == "y":
             print("Opening GoFile in Chrome...")
-            sh("am start -a android.intent.action.VIEW -d '" + cfg["gofile_url"] + "'", silent=True)
-            time.sleep(6)
+            sh("termux-open-url '" + cfg["gofile_url"] + "'", silent=True)
+            time.sleep(5)
             bring_termux_foreground()
-        else:
+        elif choice == "n":
             info("Skipping GoFile — installing whatever is available.")
+        else:
+            info("Invalid input. Returning to main menu...")
+            return
     else:
         print(); ok("All needed APKs already in Downloads — skipping GoFile.")
     print()
