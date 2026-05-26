@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.12
-Clean GoFile + Delete APKs Option
+VSPhone Roblox Auto Relauncher v6.13
+Fixed Auto Relaunch + No Focus Fighting
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -21,7 +21,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.12"
+VERSION = "6.13"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -31,7 +31,7 @@ ROBLOX_DOMAIN = ".roblox.com"
 COOKIE_PREFIX = "_|WARNING:-DO-NOT-SHARE-THIS"
 C_UTC = 13300000000000000
 E_UTC = 13580000000000000
-BOOT_GRACE = 20
+BOOT_GRACE = 25          # Increased for custom float APKs
 KEY_PREFIX = "FREE_"
 KEY_TTL = 86400
 MAX_KEY_FAIL = 3
@@ -88,7 +88,7 @@ class Config:
         "game_id": AOTR_GAME_ID,
         "gofile_url": "https://gofile.io/d/9ucwee",
         "cookies_path": "/storage/emulated/0/Download/cookies.txt",
-        "first_launch_delay": 8,
+        "first_launch_delay": 12,
         "relaunch_threshold": 60,
         "auto_key": True,
         "auto_sort_tabs": True,
@@ -230,13 +230,13 @@ def tap_element(terms):
     return False
 
 def bring_termux_foreground():
+    # Only call this when user is in menus
     for cmd in [
         "am start -n com.termux/.HomeActivity",
-        "am start -n com.termux/.app.TermuxActivity",
-        "am start com.termux"
+        "am start -n com.termux/.app.TermuxActivity"
     ]:
         sh(cmd, silent=True)
-        time.sleep(0.35)
+        time.sleep(0.3)
 
 def aggressive_dialog_tapper():
     while True:
@@ -319,7 +319,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.12
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.13
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats():
@@ -354,7 +354,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.12 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.13 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -394,55 +394,6 @@ def scan_noka_apks() -> dict:
             noka_map[n] = apk
     return noka_map
 
-def delete_downloaded_apks():
-    banner(); hdr("Delete Downloaded Noka APKs")
-    download_dir = Path("/storage/emulated/0/Download")
-    apks = list(download_dir.glob("*.apk"))
-    
-    if not apks:
-        err("No APK files found in Downloads folder.")
-        go()
-        return
-    
-    print(W + "APK files found in Downloads:")
-    for i, apk in enumerate(apks, 1):
-        print(f"  {CY}[{i}]{W} {apk.name} ({apk.stat().st_size // 1024} KB)")
-    print()
-    
-    choice = input(Y + "Delete all? [Y/n] or enter numbers to delete: " + W).strip().lower()
-    
-    to_delete = []
-    if choice == "y":
-        to_delete = apks
-    elif choice == "n":
-        info("Cancelled.")
-        go()
-        return
-    else:
-        try:
-            nums = [int(x) for x in choice.split()]
-            to_delete = [apks[n-1] for n in nums if 1 <= n <= len(apks)]
-        except:
-            err("Invalid input.")
-            go()
-            return
-    
-    if not to_delete:
-        info("Nothing to delete.")
-        go()
-        return
-    
-    for apk in to_delete:
-        try:
-            apk.unlink()
-            ok(f"Deleted: {apk.name}")
-        except Exception as e:
-            err(f"Failed to delete {apk.name}: {e}")
-    
-    print()
-    ok(f"Deleted {len(to_delete)} APK file(s).")
-    go()
-
 def install_apks(pause=True):
     banner(); hdr("Install Noka Delta Lite APKs")
     detect_packages()
@@ -472,7 +423,6 @@ def install_apks(pause=True):
         choice = input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower()
         if choice == "y":
             print("Opening GoFile in Chrome...")
-            # Clean opening - no spam
             sh("termux-open-url 'https://gofile.io/d/9ucwee'", silent=True)
             time.sleep(4)
             input(Y + "\nDownload finished? Press Enter... ")
@@ -503,7 +453,6 @@ def install_apks(pause=True):
     progress_bar(len(needed_slots), len(needed_slots), label="done")
     print()
     if installed_any: detect_packages(force=True)
-    bring_termux_foreground()
     if pause: go()
     return True
 
@@ -534,7 +483,6 @@ def uninstall_apks():
         sh(f"pm uninstall '{pkg}'", silent=True, timeout=30)
     detect_packages(force=True)
     ok(f"Uninstalled {len(to_uninstall)} package(s).")
-    bring_termux_foreground()
     go()
 
 def apk_menu():
@@ -582,7 +530,6 @@ def fast_init_webview(pkg: str, timeout: int = 30):
     t1 = threading.Thread(target=tapper, daemon=True)
     t2 = threading.Thread(target=poller, daemon=True)
     t1.start(); t2.start(); t2.join(timeout + 3); stop[0] = True; t1.join(2)
-    bring_termux_foreground()
     return result[0]
 
 def _tmp_path(pkg: str) -> str:
@@ -670,7 +617,6 @@ def cookie_login_all(pkgs: list, cookies: list):
         else: err(f"{label} — failed")
     print(); info("Closing all Roblox tabs…")
     for pkg in pkgs: sh(f"am force-stop '{pkg}'", silent=True, timeout=5)
-    bring_termux_foreground()
     print(); ok("Done."); sys.stdout.flush()
 
 def cookie_logout(pkg: str) -> bool:
@@ -697,7 +643,6 @@ def cookie_logout_all(pkgs: list):
             ok(f"{label} — cookie cleared (still running)")
         else:
             err(f"{label} — logout failed")
-    bring_termux_foreground()
     print(); ok("Logout complete."); go()
 
 def manual_cookie_login():
@@ -735,7 +680,6 @@ def manual_cookie_login():
             ok(f"{pkg_label(pkg, pkgs.index(pkg))} — cookie injected")
         else:
             err(f"{pkg_label(pkg, pkgs.index(pkg))} — failed")
-    bring_termux_foreground()
     go()
 
 def manual_cookie_logout():
@@ -765,7 +709,6 @@ def manual_cookie_logout():
             ok(f"{pkg_label(pkg, pkgs.index(pkg))} — cookie cleared")
         else:
             err(f"{pkg_label(pkg, pkgs.index(pkg))} — failed")
-    bring_termux_foreground()
     go()
 
 def cookie_menu():
@@ -830,7 +773,6 @@ def _enter_stored_key(key: str) -> str:
     sh("input keyevent KEYCODE_PASTE", silent=True); time.sleep(0.5)
     sh(f"input text '{safe}'", silent=True); time.sleep(0.4)
     tap_element(KW_KEY_SUBMIT); time.sleep(1)
-    bring_termux_foreground()
     return "entered"
 
 def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
@@ -863,17 +805,16 @@ def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
         if pkg:
             sh(f"am start {pkg}", silent=True)
             time.sleep(1.3)
-        bring_termux_foreground()
         return _enter_stored_key(key)
     warn("Could not grab key from Chrome — will retry")
-    bring_termux_foreground()
     return "waiting"
 
 def begin_auto_relaunch():
-    banner(); hdr("Begin Auto Relaunch")
+    banner(); hdr("Begin Auto Relaunch (Background Mode)")
     pkgs = cfg["packages"]
     game_id = cfg["game_id"]
     if not pkgs: err("No packages detected."); go(); return
+    
     state = {}
     for i, pkg in enumerate(pkgs):
         state[pkg] = {
@@ -885,12 +826,15 @@ def begin_auto_relaunch():
             "key_try": 0,
             "force_fresh": False,
         }
+
     def launch(pkg):
+        # Better launch command for float APKs
         sh(f"am start -a android.intent.action.VIEW -d 'roblox://experiences/start?placeId={game_id}' {pkg}", silent=True)
         state[pkg].update({"since": time.time(), "status": "BOOTING", "until": None})
-        bring_termux_foreground()
+
     def kill(pkg):
         sh(f"am force-stop '{pkg}'", silent=True, timeout=5)
+
     def draw():
         clr(); now = time.time(); W2 = 58
         print()
@@ -924,26 +868,37 @@ def begin_auto_relaunch():
                   f"{cr:<9}" + DIM + f"{upt:<20}" + RS + CY + "║")
         print(CY + f" ╚{'═'*W2}╝")
         print(DIM + f"\n last check: {time.strftime('%H:%M:%S')}" + RS)
-    info("Killing all clones…")
+
+    info("Killing all clones...")
     for pkg in pkgs: kill(pkg)
-    time.sleep(1)
-    info("Launching all clones…")
+    time.sleep(2)
+
+    info("Launching all clones (background mode)...")
     for pkg in pkgs:
-        info(f" {state[pkg]['label']}…"); launch(pkg); time.sleep(0.8)
-    captcha_at = 0.0; key_at = 0.0
+        info(f" {state[pkg]['label']}...")
+        launch(pkg)
+        time.sleep(1.5)
+
+    captcha_at = 0.0
+    key_at = 0.0
+
     try:
         while True:
             now = time.time()
-            if now - captcha_at > 7:
+
+            # Check for captcha
+            if now - captcha_at > 8:
                 if has_captcha():
                     for pkg, s in state.items():
                         if s["status"] == "LIVE":
                             s["crashes"] += 1
                             s["status"] = "WAIT"
-                            s["until"] = now + 12
+                            s["until"] = now + 15
                             kill(pkg)
                 captcha_at = now
-            if now - key_at > 4:
+
+            # Check for key dialog
+            if now - key_at > 5:
                 if has_key_dialog():
                     fg = get_foreground_pkg()
                     if fg in state and state[fg]["status"] != "KEY":
@@ -951,11 +906,16 @@ def begin_auto_relaunch():
                         state[fg]["key_try"] = 0
                         state[fg]["force_fresh"] = False
                 key_at = now
+
+            # Main state machine
             for pkg, s in state.items():
                 st = s["status"]
+
                 if st == "WAIT":
-                    if s["until"] and now >= s["until"]: launch(pkg)
+                    if s["until"] and now >= s["until"]:
+                        launch(pkg)
                     continue
+
                 if st == "BOOTING":
                     elapsed = now - (s["since"] or now)
                     if elapsed >= BOOT_GRACE:
@@ -964,14 +924,16 @@ def begin_auto_relaunch():
                         else:
                             s["crashes"] += 1
                             s["status"] = "WAIT"
-                            s["until"] = now + 12
+                            s["until"] = now + 15
                     continue
+
                 if st == "LIVE":
                     if not sh(f"pidof '{pkg}' 2>/dev/null", capture=True, timeout=4).strip():
                         s["crashes"] += 1
                         s["status"] = "WAIT"
-                        s["until"] = now + 12
-                        continue
+                        s["until"] = now + 15
+                    continue
+
                 if st == "KEY":
                     result = handle_key_dialog(pkg=pkg, force_fresh=s["force_fresh"])
                     s["force_fresh"] = False
@@ -986,11 +948,13 @@ def begin_auto_relaunch():
                             _clear_key()
                             s["force_fresh"] = True
                     continue
+
             draw()
-            time.sleep(2.8)
+            time.sleep(3.5)   # Slower loop = less interference
+
     except KeyboardInterrupt:
         print()
-        info("Stopping — killing all clones…")
+        info("Stopping — killing all clones...")
         for pkg in pkgs: kill(pkg)
         ok("All stopped.")
         go()
@@ -1016,7 +980,7 @@ def aio():
     info("Step 3/4: Installing AOTR TrackStat into Delta autoexec…")
     install_aotr_trackstat()
     print()
-    info("Step 4/4: Starting Auto Relaunch (Ctrl+C to stop)…")
+    info("Step 4/4: Starting Auto Relaunch (background mode)...")
     time.sleep(2)
     begin_auto_relaunch()
 
@@ -1080,7 +1044,7 @@ def main():
         menu_item("1", "Install / Uninstall APKs", f"slots used: {noka}/{MAX_CLONES}")
         menu_item("2", "Cookie Login / Logout", f"{len(cfg['packages'])} package(s) ready")
         menu_item("3", "AIO — Full Setup & Relaunch", "install + login + trackstat + auto")
-        menu_item("4", "Begin Auto Relaunch", "monitor + crash + key recovery")
+        menu_item("4", "Begin Auto Relaunch", "background mode (no focus fighting)")
         menu_item("5", "Settings", "configure")
         menu_item("0", "Exit", "")
         print(CY + " └─────────────────────────────────────────────┘")
