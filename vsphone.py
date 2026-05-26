@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.10
-Fixed: GoFile + Invalid Input + Chrome Opening
+VSPhone Roblox Auto Relauncher v6.11
+Chrome Sync Fix + Wait for Enter after Download
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -21,7 +21,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.10"
+VERSION = "6.11"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -40,7 +40,8 @@ DELTA_AUTOEXEC_PATH = "/storage/emulated/0/delta/autoexec"
 
 KW_PERMISSION = ["Continue", "CONTINUE", "Allow", "ALLOW", "Next", "OK", "Ok",
                "Accept", "Grant", "GOT IT", "Got it", "DONE", "Done",
-               "CLOSE", "Close", "Dismiss", "DISMISS", "Accept & continue"]
+               "CLOSE", "Close", "Dismiss", "DISMISS", "Accept & continue",
+               "No thanks", "NO THANKS", "No Thanks"]
 
 KW_KEY_RECEIVE = ["receive key", "getkey", "get key", "receive"]
 KW_KEY_INPUT = ["key_example", "enter key", "key example"]
@@ -240,7 +241,7 @@ def bring_termux_foreground():
 def aggressive_dialog_tapper():
     while True:
         try:
-            tap_element(KW_PERMISSION + KW_KEY_RECEIVE + ["OK", "Ok", "GOT IT", "Got it", "CLOSE", "Dismiss", "receive key", "Copy"])
+            tap_element(KW_PERMISSION + KW_KEY_RECEIVE + ["OK", "Ok", "GOT IT", "Got it", "CLOSE", "Dismiss", "receive key", "Copy", "No thanks", "NO THANKS"])
             time.sleep(0.28)
         except:
             time.sleep(1)
@@ -318,7 +319,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.10
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.11
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats():
@@ -353,7 +354,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.10 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.11 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -422,15 +423,17 @@ def install_apks(pause=True):
         choice = input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower()
         if choice == "y":
             print("Opening GoFile in Chrome...")
-            # === EXACT LOGIC FROM YOUR v3.9 SCRIPT ===
+            # === EXACT LOGIC FROM YOUR OLD SCRIPT ===
             sh(f"am start -a android.intent.action.VIEW -d 'https://gofile.io/d/9ucwee'")
-            time.sleep(6)
+            time.sleep(5)
+            # Wait for user to download
+            input(C.YELLOW + "\nDownload finished? Press Enter... ")
             bring_termux_foreground()
         elif choice == "n":
             info("Skipping GoFile — installing whatever is available.")
         else:
             info("Invalid input. Returning to main menu...")
-            return False   # ← FIXED: Now properly returns
+            return False
     else:
         print(); ok("All needed APKs already in Downloads — skipping GoFile.")
     print()
