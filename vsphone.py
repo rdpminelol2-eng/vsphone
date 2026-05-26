@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.16
-- CPU stats now reliable on multi-core devices
-- Verbose Delta key logging (shows every step + failure reasons)
-- Background key dialog detection for floating windows (catches minimized Noka tabs)
-- Versioning rule: +0.01 for small fixes, major jumps for big features
+VSPhone Roblox Auto Relauncher v6.17
+- Key handling now works during BOOTING phase (key dialogs appear very early)
+- CPU shows correct multi-core % (800% = 8 cores at 100%)
+- All previous fixes + verbose logging
 """
 import os, sys, time, subprocess, re, signal, threading
 import sqlite3 as _sq3
@@ -20,7 +19,7 @@ except ImportError:
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
-VERSION = "6.16"
+VERSION = "6.17"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -979,7 +978,7 @@ def begin_auto_relaunch():
             if now - key_full_check_at > 18:
                 info("Checking all clones for stuck key dialogs...")
                 for p in pkgs:
-                    if state[p]["status"] == "LIVE":
+                    if state[p]["status"] in ("LIVE", "BOOTING"):
                         sh(f"am start {p}", silent=True)
                         time.sleep(1.2)
                         if has_key_dialog():
