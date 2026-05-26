@@ -34,7 +34,7 @@ R  = Fore.RED;    G = Fore.GREEN;  Y  = Fore.YELLOW
 M  = Fore.MAGENTA; CY= Fore.CYAN;  W  = Fore.WHITE
 DIM= Style.DIM;  BR = Style.BRIGHT; RS= Style.RESET_ALL
 
-VERSION       = "5.91"
+VERSION       = "5.92"
 CREATOR       = "IWZVC"
 CFG_FILE      = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID  = "13379208636"
@@ -266,9 +266,19 @@ def type_text(text: str):
 _pkg_lock = threading.Lock()
 
 def detect_packages(force=False):
-    raw   = sh("pm list packages 2>/dev/null | grep -iE 'roblox|delta'", capture=True, timeout=20)
-    found = [l.replace("package:", "").strip() for l in raw.splitlines() if l.strip()]
+    raw        = sh("pm list packages 2>/dev/null | grep -iE 'roblox|delta'", capture=True, timeout=20)
+    candidates = [l.replace("package:", "").strip() for l in raw.splitlines() if l.strip()]
+
+    # Secondary check: pm path returns "package:/data/app/..." only if the APK
+    # actually exists on disk.  Uninstalled / ghost entries return nothing.
+    found = []
+    for pkg in candidates:
+        apk_path = sh(f"pm path {pkg} 2>/dev/null", capture=True, timeout=5)
+        if apk_path.strip():
+            found.append(pkg)
+
     with _pkg_lock:
+        # Always write when force=True so stale cache is cleared even if found=[]
         if found or force:
             cfg["packages"] = found
     return cfg["packages"]
