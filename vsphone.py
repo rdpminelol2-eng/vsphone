@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.6
-Auto GoFile Download + All fixes
+VSPhone Roblox Auto Relauncher v6.7
+Clean version - GoFile + Chrome terms fixed
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -14,14 +14,14 @@ try:
     from colorama import Fore, Style, init
     init(autoreset=True)
 except ImportError:
-    print("Missing packages. Run the setup command first.")
+    print("Missing packages. Run: pip install colorama pyyaml requests")
     sys.exit(1)
 
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.6"
+VERSION = "6.7"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -40,7 +40,9 @@ DELTA_AUTOEXEC_PATH = "/storage/emulated/0/delta/autoexec"
 
 KW_PERMISSION = ["Continue", "CONTINUE", "Allow", "ALLOW", "Next", "OK", "Ok",
                "Accept", "Grant", "GOT IT", "Got it", "DONE", "Done",
-               "CLOSE", "Close", "Dismiss", "DISMISS"]
+               "CLOSE", "Close", "Dismiss", "DISMISS", "Accept & continue",
+               "Got it", "ACCEPT"]
+
 KW_KEY_RECEIVE = ["receive key", "getkey", "get key", "receive"]
 KW_KEY_INPUT = ["key_example", "enter key", "key example"]
 KW_KEY_SUBMIT = ["continue", "submit", "confirm"]
@@ -239,7 +241,7 @@ def bring_termux_foreground():
 def aggressive_dialog_tapper():
     while True:
         try:
-            tap_element(KW_PERMISSION + KW_KEY_RECEIVE + ["OK", "Ok", "GOT IT", "Got it", "CLOSE", "Dismiss", "receive key", "Copy", "Download", "DOWNLOAD"])
+            tap_element(KW_PERMISSION + KW_KEY_RECEIVE + ["OK", "Ok", "GOT IT", "Got it", "CLOSE", "Dismiss", "receive key", "Copy"])
             time.sleep(0.28)
         except:
             time.sleep(1)
@@ -309,89 +311,6 @@ def get_next_available_slots(want):
     print(f"[DEBUG] Will install into these slots: {missing}")
     return missing
 
-def auto_download_from_gofile():
-    info("Auto-clicking download on GoFile...")
-    time.sleep(4)
-    for _ in range(20):
-        if tap_element(["Download", "DOWNLOAD", "Get Download Link", "download", "DOWNLOAD FILE"]):
-            ok("Download started automatically!")
-            time.sleep(3)
-            return True
-        time.sleep(1)
-    warn("Could not auto-click (tap manually if needed)")
-    return False
-
-def install_aotr_trackstat():
-    folder = Path(DELTA_AUTOEXEC_PATH)
-    try:
-        folder.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        err(f"Cannot create autoexec folder: {e}")
-        return False
-
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.6
-local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
-
-local function getStats():
-    local plr = game.Players.LocalPlayer
-    local gold = (plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Gold") and plr.leaderstats.Gold.Value) or 0
-    local gems = (plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Gems") and plr.leaderstats.Gems.Value) or 0
-    local scrolls = (plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Scrolls") and plr.leaderstats.Scrolls.Value) or 0
-    local username = plr.Name
-    return gold, gems, scrolls, username
-end
-
-local lastGold, lastGems, lastTime = 0, 0, tick()
-local interval = 300
-
-while true do
-    local gold, gems, scrolls, username = getStats()
-    local now = tick()
-    local dtHours = math.max((now - lastTime) / 3600, 0.01)
-    
-    local goldPerHour = (gold - lastGold) / dtHours
-    local gemsPerHour = (gems - lastGems) / dtHours
-    local spinsPerHour = (gemsPerHour * 0.01) + ((goldPerHour / 1000000) * 1000 * 0.01)
-    
-    local embed = {
-        title = "⚔️ AOTR Stats — " .. username,
-        color = 0x00FFAA,
-        fields = {
-            {name = "💰 Gold", value = tostring(gold), inline = true},
-            {name = "💎 Gems", value = tostring(gems), inline = true},
-            {name = "📜 Scrolls", value = tostring(scrolls), inline = true},
-            {name = "📈 Gold/Hour", value = string.format("%.0f", goldPerHour), inline = true},
-            {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
-            {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
-        },
-        footer = {text = "VSPhone v6.6 • " .. os.date("%H:%M")},
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    
-    pcall(function()
-        (syn and syn.request or http_request or request)({
-            Url = webhook,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = game:GetService("HttpService"):JSONEncode({embeds = {embed}})
-        })
-    end)
-    
-    lastGold, lastGems, lastTime = gold, gems, now
-    wait(interval)
-end
-'''
-
-    target = folder / "aotr_trackstat.lua"
-    try:
-        with open(target, "w", encoding="utf-8") as f:
-            f.write(lua_code)
-        ok(f"AOTR TrackStat installed → {target}")
-        return True
-    except Exception as e:
-        err(f"Failed to write TrackStat: {e}")
-        return False
-
 def get_apk_number(apk: Path):
     m = re.search(r"(\d+)\s*$", apk.stem)
     return int(m.group(1)) if m else None
@@ -432,8 +351,8 @@ def install_apks(pause=True):
         print(); warn(f"Still need: slot(s) {CY}{missing}")
         if input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower() != "n":
             sh("am start -a android.intent.action.VIEW -d '" + cfg["gofile_url"] + "'", silent=True)
-            auto_download_from_gofile()
-            noka_map = scan_noka_apks()
+            time.sleep(5)  # Give Chrome time to open
+            bring_termux_foreground()
         else:
             info("Skipping GoFile — installing whatever is available.")
     else:
