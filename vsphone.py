@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.9
-Fixed: Invalid input + Reliable GoFile opening
+VSPhone Roblox Auto Relauncher v6.10
+Fixed: GoFile + Invalid Input + Chrome Opening
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -21,7 +21,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.9"
+VERSION = "6.10"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -318,7 +318,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.9
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.10
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats():
@@ -353,7 +353,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.9 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.10 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -404,7 +404,7 @@ def install_apks(pause=True):
     if can_add <= 0:
         ok("All 10 slots full.")
         if pause: go()
-        return
+        return False
     want_raw = input(Y + f" How many to install? (1-{can_add}): " + W).strip()
     want = min(int(want_raw) if want_raw.isdigit() else 1, can_add)
     needed_slots = get_next_available_slots(want)
@@ -422,14 +422,15 @@ def install_apks(pause=True):
         choice = input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower()
         if choice == "y":
             print("Opening GoFile in Chrome...")
-            sh("termux-open-url '" + cfg["gofile_url"] + "'", silent=True)
-            time.sleep(5)
+            # === EXACT LOGIC FROM YOUR v3.9 SCRIPT ===
+            sh(f"am start -a android.intent.action.VIEW -d 'https://gofile.io/d/9ucwee'")
+            time.sleep(6)
             bring_termux_foreground()
         elif choice == "n":
             info("Skipping GoFile — installing whatever is available.")
         else:
             info("Invalid input. Returning to main menu...")
-            return
+            return False   # ← FIXED: Now properly returns
     else:
         print(); ok("All needed APKs already in Downloads — skipping GoFile.")
     print()
@@ -453,6 +454,7 @@ def install_apks(pause=True):
     if installed_any: detect_packages(force=True)
     bring_termux_foreground()
     if pause: go()
+    return True
 
 def uninstall_apks():
     banner(); hdr("Uninstall Noka Delta Lite APKs")
@@ -943,7 +945,12 @@ def begin_auto_relaunch():
 def aio():
     banner(); hdr("AIO — Full Setup & Auto Relaunch")
     info("Step 1/4: Installing APKs…")
-    install_apks(pause=False)
+    success = install_apks(pause=False)
+    if not success:
+        print()
+        warn("AIO stopped due to invalid input.")
+        go()
+        return
     print()
     info("Step 2/4: Cookie Login…")
     cookies = read_cookies()
