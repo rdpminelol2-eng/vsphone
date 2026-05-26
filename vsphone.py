@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/vsphone.py << 'ENDOFSCRIPT'
 #!/usr/bin/env python3
 """
 VSPhone Roblox Auto Relauncher v7.5
