@@ -34,7 +34,7 @@ R  = Fore.RED;    G = Fore.GREEN;  Y  = Fore.YELLOW
 M  = Fore.MAGENTA; CY= Fore.CYAN;  W  = Fore.WHITE
 DIM= Style.DIM;  BR = Style.BRIGHT; RS= Style.RESET_ALL
 
-VERSION       = "5.9"
+VERSION       = "5.91"
 CREATOR       = "IWZVC"
 CFG_FILE      = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID  = "13379208636"
@@ -263,12 +263,28 @@ def type_text(text: str):
 # ═══════════════════════════════════════════════════
 #  PACKAGES
 # ═══════════════════════════════════════════════════
+_pkg_lock = threading.Lock()
+
 def detect_packages(force=False):
     raw   = sh("pm list packages 2>/dev/null | grep -iE 'roblox|delta'", capture=True, timeout=20)
     found = [l.replace("package:", "").strip() for l in raw.splitlines() if l.strip()]
-    if found or force:
-        cfg["packages"] = found
+    with _pkg_lock:
+        if found or force:
+            cfg["packages"] = found
     return cfg["packages"]
+
+def _pkg_watcher():
+    """Background thread: re-scans installed packages every 30s.
+    Only writes the result if pm is confirmed alive — prevents
+    wiping the list on a pm timeout."""
+    while True:
+        time.sleep(30)
+        try:
+            alive = sh("pm list packages 2>/dev/null | head -1", capture=True, timeout=10)
+            if alive.strip():
+                detect_packages(force=True)
+        except Exception:
+            pass
 
 def count_noka_installed(): return len(cfg["packages"])
 
@@ -725,7 +741,10 @@ def begin_auto_relaunch():
 # ═══════════════════════════════════════════════════
 def main():
     signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
-    detect_packages()
+    # Force package scan on launch — clears stale cache
+    detect_packages(force=True)
+    # Background watcher: keeps package list live every 30s
+    threading.Thread(target=_pkg_watcher, daemon=True).start()
     while True:
         banner(); noka = count_noka_installed()
         print(CY + "  ┌─────────────────────────────────────────────┐")
