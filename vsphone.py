@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.18
-- CPU now shows 0-100% like Windows (capped)
-- Reverted BOOTING check (only LIVE as requested)
-- Grab key once → apply to all tabs (planned for v6.19 if still needed)
+VSPhone Roblox Auto Relauncher v6.20
+- Direct key handling (no more status delay) — should finally tap & grab when detected
+- Grab once → apply to all (from v6.19)
+- CPU 0-100% like Windows
 """
 import os, sys, time, subprocess, re, signal, threading
 import sqlite3 as _sq3
@@ -19,7 +19,7 @@ except ImportError:
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
-VERSION = "6.18"
+VERSION = "6.20"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -862,11 +862,19 @@ def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
             info(f"[{label}] Bringing Noka floating window back to front...")
             sh(f"am start {pkg}", silent=True)
             time.sleep(2.0)
-            sh("input tap 150 300", silent=True)  # refocus floating window
+            sh("input tap 150 300", silent=True)
             time.sleep(0.6)
         info(f"[{label}] Entering key into Noka...")
         result = _enter_stored_key(key)
         ok(f"[{label}] Key successfully entered!")
+
+        # v6.19: Grab ONCE → apply same key to ALL clones that need it (fixes floating window issues)
+        for other_pkg in cfg.get("packages", []):
+            if other_pkg != pkg:
+                info(f"Applying same key to {pkg_label(other_pkg, 0)}...")
+                sh(f"am start {other_pkg}", silent=True)
+                time.sleep(1.5)
+                _enter_stored_key(key)
         return result
    
     warn(f"[{label}] FAILED to grab key after 20 attempts — possible reasons: Chrome didn't load the key, key not visible on screen, or clipboard blocked. Will retry next cycle.")
@@ -983,11 +991,8 @@ def begin_auto_relaunch():
                         sh(f"am start {p}", silent=True)
                         time.sleep(1.2)
                         if has_key_dialog():
-                            if state[p]["status"] != "KEY":
-                                state[p]["status"] = "KEY"
-                                state[p]["key_try"] = 0
-                                state[p]["force_fresh"] = False
-                                info(f"[{state[p]['label']}] Found key dialog — will grab & enter now")
+                            info(f"[{state[p]['label']}] Key dialog found — handling directly now...")
+                            handle_key_dialog(p)  # Direct call — bypasses status for reliability
                 key_full_check_at = now
             if cfg.get("auto_sort_tabs", True) and now - sort_at > 45:
                 auto_sort_tabs()
