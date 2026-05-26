@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════════════╗
-║ VSPhone Roblox Auto Relauncher v6.5              ║
+║ VSPhone Roblox Auto Relauncher v6.6              ║
 ║ Created by IWZVC • Termux • Rooted               ║
 ╚══════════════════════════════════════════════════╝
-v6.5 — Complete fix (slot detection + Ctrl+C works + all functions)
+v6.6 — Auto GoFile Download + Full fixes
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -17,14 +17,14 @@ try:
     from colorama import Fore, Style, init
     init(autoreset=True)
 except ImportError:
-    print("Run: pip install colorama pyyaml")
+    print("Run: pip install colorama pyyaml requests")
     sys.exit(1)
 
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.5"
+VERSION = "6.6"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -242,7 +242,7 @@ def bring_termux_foreground():
 def aggressive_dialog_tapper():
     while True:
         try:
-            tap_element(KW_PERMISSION + KW_KEY_RECEIVE + ["OK", "Ok", "GOT IT", "Got it", "CLOSE", "Dismiss", "receive key", "Copy"])
+            tap_element(KW_PERMISSION + KW_KEY_RECEIVE + ["OK", "Ok", "GOT IT", "Got it", "CLOSE", "Dismiss", "receive key", "Copy", "Download", "DOWNLOAD"])
             time.sleep(0.28)
         except:
             time.sleep(1)
@@ -312,6 +312,19 @@ def get_next_available_slots(want):
     print(f"[DEBUG] Will install into these slots: {missing}")
     return missing
 
+def auto_download_from_gofile():
+    """NEW: Automatically clicks download button on GoFile"""
+    info("Waiting for GoFile page to load...")
+    time.sleep(4)
+    for _ in range(20):
+        if tap_element(["Download", "DOWNLOAD", "Get Download Link", "download", "DOWNLOAD FILE"]):
+            ok("Download started automatically!")
+            time.sleep(3)
+            return True
+        time.sleep(1)
+    warn("Could not auto-click download (you may need to tap manually)")
+    return False
+
 def install_aotr_trackstat():
     folder = Path(DELTA_AUTOEXEC_PATH)
     try:
@@ -320,7 +333,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.5
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.6
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats():
@@ -355,7 +368,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.5 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.6 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -423,7 +436,7 @@ def install_apks(pause=True):
         print(); warn(f"Still need: slot(s) {CY}{missing}")
         if input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower() != "n":
             sh("am start -a android.intent.action.VIEW -d '" + cfg["gofile_url"] + "'", silent=True)
-            input(Y + " Download(s) finished? Press Enter… " + RS)
+            auto_download_from_gofile()   # ← AUTO DOWNLOAD ADDED
             noka_map = scan_noka_apks()
         else:
             info("Skipping GoFile — installing whatever is available.")
