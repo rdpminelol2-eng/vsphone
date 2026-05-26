@@ -981,23 +981,57 @@ def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
         warn(f"[{label}] Key dialog not visible after bring_to_front — skipping")
         return "waiting"
 
-    # ── Step 3: Tap "Receive Key" found via uiautomator text search ────────
-    info(f"[{label}] Looking for 'Receive Key' button in UI…")
+    # ── Step 3: Tap "Receive Key" — ULTRA AGGRESSIVE full-screen search ─────
+    info(f"[{label}] Looking for 'Receive Key' button (full screen search)...")
     tapped = False
-    for attempt in range(8):
+    for attempt in range(20):  # much more persistent
         xml = get_xml()
-        # Search ENTIRE screen (clickable=False) — some key buttons report clickable=false in uiautomator dump
-        # This matches how permission/Chrome auto-taps work reliably across the full UI tree
-        pos = find_element(KW_KEY_RECEIVE + ["receive","get key", "receive key"], clickable=False, xml=xml)
+
+        # Method 1: Full screen search (ignores clickable flag)
+        pos = find_element(KW_KEY_RECEIVE + ["receive key", "receive", "get key"], clickable=False, xml=xml)
         if pos:
             sh(f"input tap {pos[0]} {pos[1]}", silent=True)
             info(f"[{label}] Tapped 'Receive Key' at {pos} (attempt {attempt+1})")
             tapped = True
+            time.sleep(1.2)  # wait for Chrome to start opening
             break
-        time.sleep(0.6)
+
+        # Method 2: Also try via tap_element (extra chance)
+        if tap_element(KW_KEY_RECEIVE):
+            info(f"[{label}] Tapped 'Receive Key' via tap_element (attempt {attempt+1})")
+            tapped = True
+            time.sleep(1.2)
+            break
+
+        # Method 3: Last resort - tap any node containing "receive" or "key" near bottom of screen
+        # (helps when uiautomator misses the exact button)
+        try:
+            root = ET.fromstring(xml)
+            for node in root.iter("node"):
+                txt = (node.get("text","") + " " + node.get("content-desc","")).lower()
+                if "receive" in txt or ("key" in txt and "example" not in txt):
+                    nums = re.findall(r"\d+", node.get("bounds", ""))
+                    if len(nums) == 4:
+                        cx = (int(nums[0]) + int(nums[2])) // 2
+                        cy = (int(nums[1]) + int(nums[3])) // 2
+                        if cy > 800:  # likely in lower half of dialog
+                            sh(f"input tap {cx} {cy}", silent=True)
+                            info(f"[{label}] Fallback tapped possible Receive Key area")
+                            tapped = True
+                            time.sleep(1.2)
+                            break
+            if tapped:
+                break
+        except:
+            pass
+
+        time.sleep(0.7)
 
     if not tapped:
-        warn(f"[{label}] 'Receive Key' button not found in XML. Is the dialog visible and focused?")
+        warn(f"[{label}] 'Receive Key' still not found after 20 attempts. Dialog may be blocked or XML incomplete.")
+        # Try one last broad tap on common Receive Key area (center-right of screen)
+        sh("input tap 900 1400", silent=True)
+        time.sleep(1)
         return "waiting"
 
     # ── Step 4: Wait for Chrome to open ───────────────────────────────────
