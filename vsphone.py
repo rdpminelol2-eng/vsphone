@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
-╔══════════════════════════════════════════════════╗
-║ VSPhone Roblox Auto Relauncher v6.6              ║
-║ Created by IWZVC • Termux • Rooted               ║
-╚══════════════════════════════════════════════════╝
-v6.6 — Auto GoFile Download + Full fixes
+VSPhone Roblox Auto Relauncher v6.6
+Auto GoFile Download + All fixes
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -17,7 +14,7 @@ try:
     from colorama import Fore, Style, init
     init(autoreset=True)
 except ImportError:
-    print("Run: pip install colorama pyyaml requests")
+    print("Missing packages. Run the setup command first.")
     sys.exit(1)
 
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
@@ -313,8 +310,7 @@ def get_next_available_slots(want):
     return missing
 
 def auto_download_from_gofile():
-    """NEW: Automatically clicks download button on GoFile"""
-    info("Waiting for GoFile page to load...")
+    info("Auto-clicking download on GoFile...")
     time.sleep(4)
     for _ in range(20):
         if tap_element(["Download", "DOWNLOAD", "Get Download Link", "download", "DOWNLOAD FILE"]):
@@ -322,7 +318,7 @@ def auto_download_from_gofile():
             time.sleep(3)
             return True
         time.sleep(1)
-    warn("Could not auto-click download (you may need to tap manually)")
+    warn("Could not auto-click (tap manually if needed)")
     return False
 
 def install_aotr_trackstat():
@@ -436,7 +432,7 @@ def install_apks(pause=True):
         print(); warn(f"Still need: slot(s) {CY}{missing}")
         if input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower() != "n":
             sh("am start -a android.intent.action.VIEW -d '" + cfg["gofile_url"] + "'", silent=True)
-            auto_download_from_gofile()   # ← AUTO DOWNLOAD ADDED
+            auto_download_from_gofile()
             noka_map = scan_noka_apks()
         else:
             info("Skipping GoFile — installing whatever is available.")
