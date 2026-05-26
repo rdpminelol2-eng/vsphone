@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.14
-CPU/RAM Monitor + Bulletproof Delta Key
+VSPhone Roblox Auto Relauncher v6.15
+Clean + All Requested Features
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -21,7 +21,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.14"
+VERSION = "6.15"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -111,16 +111,13 @@ class Config:
 cfg = Config()
 
 def get_system_stats():
-    """Get CPU and RAM usage"""
     try:
-        # RAM
         mem = sh("cat /proc/meminfo 2>/dev/null | head -5", capture=True, timeout=3)
         total = int(re.search(r'MemTotal:\s+(\d+)', mem).group(1)) // 1024
         free = int(re.search(r'MemAvailable:\s+(\d+)', mem).group(1)) // 1024
         used = total - free
         ram = f"{used}MB/{total}MB ({int(used/total*100)}%)"
         
-        # CPU (simple average)
         cpu = sh("top -n 1 -b 2>/dev/null | grep 'CPU:' | head -1", capture=True, timeout=3)
         cpu_match = re.search(r'(\d+)%', cpu)
         cpu_usage = cpu_match.group(1) + "%" if cpu_match else "N/A"
@@ -337,7 +334,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.14
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.15
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats():
@@ -372,7 +369,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.14 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.15 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -411,6 +408,68 @@ def scan_noka_apks() -> dict:
         if n is not None and (n not in noka_map or apk.stat().st_mtime > noka_map[n].stat().st_mtime):
             noka_map[n] = apk
     return noka_map
+
+def delete_downloaded_apks():
+    banner(); hdr("Delete Downloaded Noka APKs")
+    download_dir = Path("/storage/emulated/0/Download")
+    apks = list(download_dir.glob("*.apk"))
+    
+    if not apks:
+        err("No APK files found in Downloads folder.")
+        go()
+        return
+    
+    print(W + "APK files found in Downloads:")
+    for i, apk in enumerate(apks, 1):
+        size_kb = apk.stat().st_size // 1024
+        print(f"  {CY}[{i}]{W} {apk.name} ({size_kb} KB)")
+    print()
+    
+    print(Y + "Options:")
+    print("  [a] Delete ALL")
+    print("  [s] Select specific numbers (e.g. 1 3 5)")
+    print("  [n] Cancel")
+    print()
+    
+    choice = input(Y + "Your choice: " + W).strip().lower()
+    
+    to_delete = []
+    
+    if choice == "a":
+        to_delete = apks
+    elif choice == "n":
+        info("Cancelled.")
+        go()
+        return
+    elif choice == "s":
+        nums = input(Y + "Enter numbers to delete (space separated): " + W).strip().split()
+        try:
+            nums = [int(x) for x in nums]
+            to_delete = [apks[n-1] for n in nums if 1 <= n <= len(apks)]
+        except:
+            err("Invalid input.")
+            go()
+            return
+    else:
+        err("Invalid choice.")
+        go()
+        return
+    
+    if not to_delete:
+        info("Nothing to delete.")
+        go()
+        return
+    
+    for apk in to_delete:
+        try:
+            apk.unlink()
+            ok(f"Deleted: {apk.name}")
+        except Exception as e:
+            err(f"Failed to delete {apk.name}: {e}")
+    
+    print()
+    ok(f"Deleted {len(to_delete)} APK file(s).")
+    go()
 
 def install_apks(pause=True):
     banner(); hdr("Install Noka Delta Lite APKs")
@@ -509,7 +568,7 @@ def apk_menu():
         noka = count_noka_installed()
         menu_item("1", "Install APKs", f"slots used: {noka}/{MAX_CLONES}")
         menu_item("2", "Uninstall APKs", f"{noka} installed")
-        menu_item("3", "Delete Downloaded APKs", "clean Downloads folder")
+        menu_item("3", "Delete Downloaded APKs", "choose which files to delete")
         menu_item("0", "Back to Main Menu")
         print()
         c = input(CY + " › " + W + "Choice: " + RS).strip()
@@ -763,10 +822,8 @@ def _read_clipboard() -> str:
     return m.group(1).strip() if m else ""
 
 def grab_key_from_chrome():
-    """Bulletproof key grabbing with multiple methods"""
     xml = get_xml()
     
-    # Method 1: Direct regex on screen
     m = re.search(r"FREE_[A-Za-z0-9_-]{20,}", xml)
     if m:
         key = m.group(0)
@@ -775,14 +832,21 @@ def grab_key_from_chrome():
         time.sleep(0.8)
         return key
     
-    # Method 2: Check clipboard
     clip = _read_clipboard()
     if clip.startswith(KEY_PREFIX):
         info(f"Key from clipboard: {CY}{clip[:22]}…{RS}")
         return clip
     
-    # Method 3: Try tapping "Copy" again
     if tap_element(["Copy", "COPY", "copy"]):
+        time.sleep(1)
+        clip = _read_clipboard()
+        if clip.startswith(KEY_PREFIX):
+            return clip
+    
+    # Long press fallback
+    pos = find_element(["FREE_", "key"], clickable=True)
+    if pos:
+        sh(f"input swipe {pos[0]} {pos[1]} {pos[0]} {pos[1]} 800", silent=True)
         time.sleep(1)
         clip = _read_clipboard()
         if clip.startswith(KEY_PREFIX):
@@ -826,14 +890,13 @@ def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
     else:
         info("No stored key — grabbing from Chrome…")
     
-    # Tap Receive Key
     if not tap_element(KW_KEY_RECEIVE):
         tap_element(["receive", "getkey", "get key"])
     
     time.sleep(5)
     
     key = ""
-    for attempt in range(15):
+    for attempt in range(18):
         key = grab_key_from_chrome()
         if key.startswith(KEY_PREFIX):
             break
@@ -849,6 +912,21 @@ def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
     
     warn("Could not grab key after multiple attempts — will retry next cycle")
     return "waiting"
+
+def auto_sort_tabs():
+    if not cfg.get("auto_sort_tabs", True):
+        return
+    
+    try:
+        # Resize all floating windows to smallest possible
+        sh("wm size 360x640", silent=True)
+        time.sleep(0.5)
+        sh("input keyevent KEYCODE_APP_SWITCH", silent=True)
+        time.sleep(0.8)
+        sh("input keyevent KEYCODE_APP_SWITCH", silent=True)
+        time.sleep(0.5)
+    except:
+        pass
 
 def begin_auto_relaunch():
     banner(); hdr("Begin Auto Relaunch (Background Mode)")
@@ -924,6 +1002,7 @@ def begin_auto_relaunch():
 
     captcha_at = 0.0
     key_at = 0.0
+    sort_at = 0.0
 
     try:
         while True:
@@ -947,6 +1026,10 @@ def begin_auto_relaunch():
                         state[fg]["key_try"] = 0
                         state[fg]["force_fresh"] = False
                 key_at = now
+
+            if cfg.get("auto_sort_tabs", True) and now - sort_at > 45:
+                auto_sort_tabs()
+                sort_at = now
 
             for pkg, s in state.items():
                 st = s["status"]
@@ -1028,6 +1111,7 @@ def settings_menu():
     while True:
         banner(); hdr("Settings"); print()
         ak = G + BR + "ON" if cfg.get("auto_key", True) else R + BR + "OFF"
+        sort = G + BR + "ON" if cfg.get("auto_sort_tabs", True) else R + BR + "OFF"
         key = cfg.get("delta_key", "")
         if key and key.startswith(KEY_PREFIX):
             dk = G + key[:22] + "… " + (DIM + f"({_key_remaining_str()} left)" if _key_is_valid() else R + "EXPIRED")
@@ -1042,6 +1126,7 @@ def settings_menu():
         print(W + f" {CY}[7]{W} Delta Key {DIM}-> {dk}{RS}")
         print(W + f" {CY}[8]{W} Force re-grab key now")
         print(W + f" {CY}[9]{W} Install AOTR TrackStat (manual)")
+        print(W + f" {CY}[10]{W} Auto Sort Tabs {DIM}-> {sort}{RS}")
         print(W + f" {CY}[0]{W} Back"); print()
         c = input(CY + " › " + W + "Choice: " + RS).strip()
         if c == "1":
@@ -1069,6 +1154,9 @@ def settings_menu():
         elif c == "9":
             install_aotr_trackstat()
             go()
+        elif c == "10":
+            cfg["auto_sort_tabs"] = not cfg.get("auto_sort_tabs", True)
+            ok("Toggled.")
         elif c == "0": break
 
 def main():
