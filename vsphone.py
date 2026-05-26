@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════════════╗
-║ VSPhone Roblox Auto Relauncher v6.4              ║
+║ VSPhone Roblox Auto Relauncher v6.5              ║
 ║ Created by IWZVC • Termux • Rooted               ║
 ╚══════════════════════════════════════════════════╝
-v6.4 — Fixed Noka slot detection (now correctly installs missing numbers)
+v6.5 — Complete fix (slot detection + Ctrl+C works + all functions)
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -24,36 +24,11 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.4"
+VERSION = "6.5"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
 MAX_CLONES = 10
-
-# ==================== SMART SLOT DETECTION ====================
-def get_installed_noka_numbers():
-    raw = sh("pm list packages 2>/dev/null | grep -iE 'roblox|delta'", capture=True, timeout=15)
-    pkgs = [l.replace("package:", "").strip() for l in raw.splitlines() if l.strip()]
-    numbers = []
-    for pkg in pkgs:
-        m = re.search(r'(\d+)', pkg)
-        if m:
-            numbers.append(int(m.group(1)))
-    return sorted(set(numbers))
-
-def get_next_available_slots(want):
-    installed = get_installed_noka_numbers()
-    print(f"[DEBUG] Currently installed Noka numbers: {installed}")   # Debug line
-    missing = []
-    i = 1
-    while len(missing) < want:
-        if i not in installed:
-            missing.append(i)
-        i += 1
-    print(f"[DEBUG] Will install into these slots: {missing}")        # Debug line
-    return missing
-# ============================================================
-
 COOKIE_NAME = ".ROBLOSECURITY"
 ROBLOX_DOMAIN = ".roblox.com"
 COOKIE_PREFIX = "_|WARNING:-DO-NOT-SHARE-THIS"
@@ -315,6 +290,99 @@ def pkg_label(pkg: str, idx: int) -> str:
     if m: return f"Noka {m.group(1)}"
     return f"Noka {idx + 1}"
 
+def get_installed_noka_numbers():
+    raw = sh("pm list packages 2>/dev/null | grep -iE 'roblox|delta'", capture=True, timeout=15)
+    pkgs = [l.replace("package:", "").strip() for l in raw.splitlines() if l.strip()]
+    numbers = []
+    for pkg in pkgs:
+        m = re.search(r'(\d+)', pkg)
+        if m:
+            numbers.append(int(m.group(1)))
+    return sorted(set(numbers))
+
+def get_next_available_slots(want):
+    installed = get_installed_noka_numbers()
+    print(f"[DEBUG] Currently installed Noka numbers: {installed}")
+    missing = []
+    i = 1
+    while len(missing) < want:
+        if i not in installed:
+            missing.append(i)
+        i += 1
+    print(f"[DEBUG] Will install into these slots: {missing}")
+    return missing
+
+def install_aotr_trackstat():
+    folder = Path(DELTA_AUTOEXEC_PATH)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        err(f"Cannot create autoexec folder: {e}")
+        return False
+
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.5
+local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
+
+local function getStats():
+    local plr = game.Players.LocalPlayer
+    local gold = (plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Gold") and plr.leaderstats.Gold.Value) or 0
+    local gems = (plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Gems") and plr.leaderstats.Gems.Value) or 0
+    local scrolls = (plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Scrolls") and plr.leaderstats.Scrolls.Value) or 0
+    local username = plr.Name
+    return gold, gems, scrolls, username
+end
+
+local lastGold, lastGems, lastTime = 0, 0, tick()
+local interval = 300
+
+while true do
+    local gold, gems, scrolls, username = getStats()
+    local now = tick()
+    local dtHours = math.max((now - lastTime) / 3600, 0.01)
+    
+    local goldPerHour = (gold - lastGold) / dtHours
+    local gemsPerHour = (gems - lastGems) / dtHours
+    local spinsPerHour = (gemsPerHour * 0.01) + ((goldPerHour / 1000000) * 1000 * 0.01)
+    
+    local embed = {
+        title = "⚔️ AOTR Stats — " .. username,
+        color = 0x00FFAA,
+        fields = {
+            {name = "💰 Gold", value = tostring(gold), inline = true},
+            {name = "💎 Gems", value = tostring(gems), inline = true},
+            {name = "📜 Scrolls", value = tostring(scrolls), inline = true},
+            {name = "📈 Gold/Hour", value = string.format("%.0f", goldPerHour), inline = true},
+            {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
+            {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
+        },
+        footer = {text = "VSPhone v6.5 • " .. os.date("%H:%M")},
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    
+    pcall(function()
+        (syn and syn.request or http_request or request)({
+            Url = webhook,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = game:GetService("HttpService"):JSONEncode({embeds = {embed}})
+        })
+    end)
+    
+    lastGold, lastGems, lastTime = gold, gems, now
+    wait(interval)
+end
+'''
+
+    target = folder / "aotr_trackstat.lua"
+    try:
+        with open(target, "w", encoding="utf-8") as f:
+            f.write(lua_code)
+        ok(f"AOTR TrackStat installed → {target}")
+        return True
+    except Exception as e:
+        err(f"Failed to write TrackStat: {e}")
+        return False
+
 def get_apk_number(apk: Path):
     m = re.search(r"(\d+)\s*$", apk.stem)
     return int(m.group(1)) if m else None
@@ -341,10 +409,7 @@ def install_apks(pause=True):
         return
     want_raw = input(Y + f" How many to install? (1-{can_add}): " + W).strip()
     want = min(int(want_raw) if want_raw.isdigit() else 1, can_add)
-    
-    # === FIXED SMART SLOT DETECTION ===
     needed_slots = get_next_available_slots(want)
-    
     print(); info("Scanning Downloads for existing Noka APKs…")
     noka_map = scan_noka_apks()
     if noka_map:
@@ -353,7 +418,6 @@ def install_apks(pause=True):
             print(W + f" #{CY}{n}{W} {DIM}{apk.name}{RS}")
     else:
         warn("No Noka APKs found in Downloads.")
-    
     missing = [s for s in needed_slots if s not in noka_map]
     if missing:
         print(); warn(f"Still need: slot(s) {CY}{missing}")
@@ -365,7 +429,6 @@ def install_apks(pause=True):
             info("Skipping GoFile — installing whatever is available.")
     else:
         print(); ok("All needed APKs already in Downloads — skipping GoFile.")
-    
     print()
     installed_any = False
     for idx, slot in enumerate(needed_slots):
@@ -431,7 +494,515 @@ def apk_menu():
         elif c == "2": uninstall_apks()
         elif c == "0": break
 
-# (rest of the script is the same as before - cookie, relaunch, AIO, etc.)
+def db_exists(path: str) -> bool:
+    return sh(f"test -f '{path}' && echo YES || echo NO", capture=True) == "YES"
+
+def _find_db_silent(pkg: str):
+    for rel in WEBVIEW_DB_ORDERED:
+        db = f"/data/data/{pkg}/{rel}"
+        if db_exists(db): return db
+    return None
+
+def fast_init_webview(pkg: str, timeout: int = 30):
+    sh("input keyevent KEYCODE_WAKEUP", silent=True)
+    sh(f"monkey -p {pkg} -c android.intent.category.LAUNCHER 1", silent=True)
+    time.sleep(1.5)
+    sh(f"am start -a android.intent.action.VIEW -d 'roblox://' {pkg}", silent=True)
+    time.sleep(1)
+    result = [None]; stop = [False]
+    def tapper():
+        while not stop[0]:
+            tap_element(KW_PERMISSION); time.sleep(0.5)
+    def poller():
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if stop[0]: break
+            db = _find_db_silent(pkg)
+            if db: result[0] = db; stop[0] = True; return
+            time.sleep(0.5)
+        stop[0] = True
+    t1 = threading.Thread(target=tapper, daemon=True)
+    t2 = threading.Thread(target=poller, daemon=True)
+    t1.start(); t2.start(); t2.join(timeout + 3); stop[0] = True; t1.join(2)
+    bring_termux_foreground()
+    return result[0]
+
+def _tmp_path(pkg: str) -> str:
+    return f"/sdcard/Download/.vsphone_{re.sub(r'[^a-zA-Z0-9]', '_', pkg)}.db"
+
+def _write_cookie(pkg: str, db: str, cookie: str) -> bool:
+    tmp = _tmp_path(pkg)
+    try:
+        if os.path.exists(tmp): os.remove(tmp)
+    except: pass
+    sh(f"cp '{db}' '{tmp}'", capture=True)
+    if not os.path.exists(tmp): return False
+    try: os.chmod(tmp, 0o666)
+    except: pass
+    try:
+        con = _sq3.connect(tmp); con.isolation_level = None
+        tables = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
+        if "cookies" not in tables: con.execute(COOKIES_TABLE_DDL)
+        con.execute("DELETE FROM cookies WHERE name=? AND host_key LIKE '%roblox%';", (COOKIE_NAME,))
+        con.execute(
+            "INSERT OR REPLACE INTO cookies("
+            "creation_utc,host_key,name,value,path,expires_utc,is_secure,is_httponly,"
+            "last_access_utc,has_expires,is_persistent,priority,encrypted_value,samesite,source_scheme"
+            ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);",
+            (C_UTC, ROBLOX_DOMAIN, COOKIE_NAME, cookie, "/", E_UTC, 1, 1, C_UTC, 1, 1, 1, b"", -1, 2))
+        count = con.execute("SELECT count(*) FROM cookies WHERE name=?;", (COOKIE_NAME,)).fetchone()[0]
+        try: con.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+        except: pass
+        con.close()
+        if count == 1:
+            sh(f"cp '{tmp}' '{db}'", capture=True); sh(f"chmod 660 '{db}'", capture=True); return True
+        return False
+    except Exception: return False
+    finally:
+        try:
+            if os.path.exists(tmp): os.remove(tmp)
+        except: pass
+
+def read_cookies() -> list:
+    path = cfg["cookies_path"]
+    if not os.path.exists(path):
+        warn("Cookie file not found.")
+        path = input(Y + " Enter full path to cookies.txt: " + W).strip()
+        if os.path.exists(path): cfg["cookies_path"] = path; cfg.save()
+    cookies = []
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if line and line.startswith(COOKIE_PREFIX): cookies.append(line)
+    except Exception as e: err(f"Cannot read cookies: {e}")
+    return cookies
+
+def cookie_login_all(pkgs: list, cookies: list):
+    print(); info("Checking existing WebView databases…")
+    db_map = {pkg: _find_db_silent(pkg) for pkg in pkgs}
+    has_db = [p for p in pkgs if db_map[p]]; no_db = [p for p in pkgs if not db_map[p]]
+    for p in has_db: ok(f"{pkg_label(p, pkgs.index(p))} — DB ready")
+    for p in no_db: warn(f"{pkg_label(p, pkgs.index(p))} — needs WebView init")
+    for pkg in no_db:
+        label = pkg_label(pkg, pkgs.index(pkg)); print()
+        info(f"Initialising {CY}{label}{RS}…"); sh(f"am force-stop {pkg}", silent=True, timeout=5)
+        time.sleep(0.5); db = fast_init_webview(pkg, timeout=30)
+        sh(f"am force-stop {pkg}", silent=True, timeout=5); time.sleep(0.8)
+        if db: db_map[pkg] = db; ok(f"{label} — DB initialised")
+        else: err(f"{label} — WebView never initialised (skipping)")
+    print(); info("Writing cookies in parallel…")
+    results = {}; lock = threading.Lock()
+    def do_inject(pkg, cookie):
+        db = db_map.get(pkg)
+        s = _write_cookie(pkg, db, cookie) if db else False
+        with lock:
+            results[pkg] = s
+    threads = []
+    for i, pkg in enumerate(pkgs):
+        if i >= len(cookies): break
+        t = threading.Thread(target=do_inject, args=(pkg, cookies[i]), daemon=True)
+        threads.append((pkg, i, t)); t.start()
+    for pkg, i, t in threads: t.join(timeout=30)
+    print()
+    for i, pkg in enumerate(pkgs):
+        label = pkg_label(pkg, i)
+        if i >= len(cookies): warn(f"{label} — no cookie available"); continue
+        if results.get(pkg, False): ok(f"{label} — injected")
+        else: err(f"{label} — failed")
+    print(); info("Closing all Roblox tabs…")
+    for pkg in pkgs: sh(f"am force-stop '{pkg}'", silent=True, timeout=5)
+    bring_termux_foreground()
+    print(); ok("Done."); sys.stdout.flush()
+
+def cookie_logout(pkg: str) -> bool:
+    db = _find_db_silent(pkg)
+    if not db: return False
+    tmp = _tmp_path(pkg)
+    sh(f"cp '{db}' '{tmp}'", capture=True)
+    try:
+        con = _sq3.connect(tmp)
+        con.execute("DELETE FROM cookies WHERE name=? AND host_key LIKE '%roblox%';", (COOKIE_NAME,))
+        con.commit()
+        sh(f"cp '{tmp}' '{db}'", capture=True)
+        return True
+    except: return False
+    finally:
+        try: os.remove(tmp)
+        except: pass
+
+def cookie_logout_all(pkgs: list):
+    print(); info("Logging out (clearing cookies only — apps stay running)…")
+    for pkg in pkgs:
+        label = pkg_label(pkg, pkgs.index(pkg))
+        if cookie_logout(pkg):
+            ok(f"{label} — cookie cleared (still running)")
+        else:
+            err(f"{label} — logout failed")
+    bring_termux_foreground()
+    print(); ok("Logout complete."); go()
+
+def manual_cookie_login():
+    banner(); hdr("Manual Cookie Login (per package)")
+    pkgs = cfg["packages"]
+    if not pkgs:
+        err("No packages installed."); go(); return
+    cookies = read_cookies()
+    if not cookies:
+        err("No cookies found."); go(); return
+    print(W + "Available packages:")
+    for i, pkg in enumerate(pkgs):
+        print(f"  {CY}[{i+1}]{W} {pkg_label(pkg, i)}")
+    print()
+    sel = input(Y + "Enter package numbers to login (e.g. 1 3) or 'all': " + W).strip().lower()
+    to_login = []
+    if sel == "all":
+        to_login = pkgs[:]
+    else:
+        nums = [int(x) for x in sel.split() if x.isdigit()]
+        for n in nums:
+            if 1 <= n <= len(pkgs):
+                to_login.append(pkgs[n-1])
+    if not to_login:
+        info("Nothing selected."); go(); return
+    print()
+    info(f"Logging in {len(to_login)} package(s)…")
+    for i, pkg in enumerate(to_login):
+        if i >= len(cookies): break
+        db = _find_db_silent(pkg)
+        if not db:
+            warn(f"{pkg_label(pkg, pkgs.index(pkg))} — no DB, skipping")
+            continue
+        if _write_cookie(pkg, db, cookies[i]):
+            ok(f"{pkg_label(pkg, pkgs.index(pkg))} — cookie injected")
+        else:
+            err(f"{pkg_label(pkg, pkgs.index(pkg))} — failed")
+    bring_termux_foreground()
+    go()
+
+def manual_cookie_logout():
+    banner(); hdr("Manual Cookie Logout (per package)")
+    pkgs = cfg["packages"]
+    if not pkgs:
+        err("No packages installed."); go(); return
+    print(W + "Available packages:")
+    for i, pkg in enumerate(pkgs):
+        print(f"  {CY}[{i+1}]{W} {pkg_label(pkg, i)}")
+    print()
+    sel = input(Y + "Enter package numbers to logout (e.g. 1 3) or 'all': " + W).strip().lower()
+    to_logout = []
+    if sel == "all":
+        to_logout = pkgs[:]
+    else:
+        nums = [int(x) for x in sel.split() if x.isdigit()]
+        for n in nums:
+            if 1 <= n <= len(pkgs):
+                to_logout.append(pkgs[n-1])
+    if not to_logout:
+        info("Nothing selected."); go(); return
+    print()
+    info(f"Logging out {len(to_logout)} package(s)…")
+    for pkg in to_logout:
+        if cookie_logout(pkg):
+            ok(f"{pkg_label(pkg, pkgs.index(pkg))} — cookie cleared")
+        else:
+            err(f"{pkg_label(pkg, pkgs.index(pkg))} — failed")
+    bring_termux_foreground()
+    go()
+
+def cookie_menu():
+    banner(); hdr("Cookie Login / Logout")
+    menu_item("1", "Login All packages")
+    menu_item("2", "Logout All packages")
+    menu_item("3", "Manual Login (choose specific packages)")
+    menu_item("4", "Manual Logout (choose specific packages)")
+    menu_item("0", "Back")
+    print()
+    c = input(CY + " › " + W + "Choice: " + RS).strip()
+    if c == "1":
+        cookies = read_cookies()
+        if not cookies: err("No valid cookies found."); go(); return
+        pkgs = cfg["packages"]
+        if not pkgs: err("No packages — install APKs first."); go(); return
+        info(f"Found {G+BR}{len(cookies)}{RS} cookie(s) • {CY}{len(pkgs)}{RS} package(s)")
+        cookie_login_all(pkgs, cookies)
+        go()
+    elif c == "2":
+        pkgs = cfg["packages"]
+        if not pkgs: err("No packages installed."); go(); return
+        cookie_logout_all(pkgs)
+    elif c == "3":
+        manual_cookie_login()
+    elif c == "4":
+        manual_cookie_logout()
+    elif c == "0":
+        pass
+
+def _read_clipboard() -> str:
+    out = sh("content query --uri content://com.android.clipboard/clip", capture=True, timeout=5)
+    m = re.search(r"text=([^\s,]+)", out)
+    return m.group(1).strip() if m else ""
+
+def grab_key_from_chrome() -> str:
+    xml = get_xml()
+    m = re.search(r"FREE_[A-Za-z0-9_-]{20,}", xml)
+    if m:
+        key = m.group(0)
+        info(f"Key found on screen: {CY}{key[:22]}…{RS}")
+        tap_element(["Copy", "COPY", "copy"])
+        time.sleep(0.5)
+        return key
+    clip = _read_clipboard()
+    if clip.startswith(KEY_PREFIX):
+        info(f"Key from clipboard: {CY}{clip[:22]}…{RS}")
+        return clip
+    return ""
+
+def has_key_dialog() -> bool:
+    xml = get_xml().lower()
+    return any(k in xml for k in ["receive key", "enter key", "key system", "welcome back", "getkey", "whitelisted"])
+
+def _enter_stored_key(key: str) -> str:
+    info(f"Entering key: {CY}{key[:20]}…{RS}")
+    pos = find_element(KW_KEY_INPUT, clickable=True)
+    if pos: sh(f"input tap {pos[0]} {pos[1]}", silent=True); time.sleep(0.5)
+    sh("input keyevent KEYCODE_CTRL_A", silent=True); time.sleep(0.2)
+    safe = re.sub(r"(['\"])", r"\\\1", key)
+    sh(f"am broadcast -a clipper.set -e text '{safe}' 2>/dev/null", silent=True); time.sleep(0.3)
+    sh("input keyevent KEYCODE_PASTE", silent=True); time.sleep(0.5)
+    sh(f"input text '{safe}'", silent=True); time.sleep(0.4)
+    tap_element(KW_KEY_SUBMIT); time.sleep(1)
+    bring_termux_foreground()
+    return "entered"
+
+def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
+    if pkg:
+        sh(f"am start {pkg}", silent=True)
+        time.sleep(1.2)
+    if not has_key_dialog():
+        return "none"
+    if not force_fresh and _key_is_valid():
+        stored = cfg.get("delta_key", "").strip()
+        info(f"Using stored key ({_key_remaining_str()} left)")
+        return _enter_stored_key(stored)
+    if force_fresh:
+        warn("Forcing fresh key grab…")
+    elif cfg.get("delta_key", ""):
+        warn("Stored key expired — grabbing fresh from Chrome…")
+    else:
+        info("No stored key — grabbing from Chrome…")
+    if not tap_element(KW_KEY_RECEIVE):
+        tap_element(["receive", "getkey", "get key"])
+    time.sleep(4.5)
+    key = ""
+    for _ in range(12):
+        key = grab_key_from_chrome()
+        if key.startswith(KEY_PREFIX): break
+        time.sleep(1.2)
+    if key.startswith(KEY_PREFIX):
+        _save_key(key)
+        ok(f"Key grabbed & saved (24h): {key[:18]}…")
+        if pkg:
+            sh(f"am start {pkg}", silent=True)
+            time.sleep(1.3)
+        bring_termux_foreground()
+        return _enter_stored_key(key)
+    warn("Could not grab key from Chrome — will retry")
+    bring_termux_foreground()
+    return "waiting"
+
+def begin_auto_relaunch():
+    banner(); hdr("Begin Auto Relaunch")
+    pkgs = cfg["packages"]
+    game_id = cfg["game_id"]
+    if not pkgs: err("No packages detected."); go(); return
+    state = {}
+    for i, pkg in enumerate(pkgs):
+        state[pkg] = {
+            "label": pkg_label(pkg, i),
+            "status": "INIT",
+            "crashes": 0,
+            "since": None,
+            "until": None,
+            "key_try": 0,
+            "force_fresh": False,
+        }
+    def launch(pkg):
+        sh(f"am start -a android.intent.action.VIEW -d 'roblox://experiences/start?placeId={game_id}' {pkg}", silent=True)
+        state[pkg].update({"since": time.time(), "status": "BOOTING", "until": None})
+        bring_termux_foreground()
+    def kill(pkg):
+        sh(f"am force-stop '{pkg}'", silent=True, timeout=5)
+    def draw():
+        clr(); now = time.time(); W2 = 58
+        print()
+        print(CY + f" ╔{'═'*W2}╗")
+        print(CY + " ║" + Y + BR + f" AUTO RELAUNCH · {len(pkgs)} clone(s) · Ctrl+C to stop".ljust(W2) + RS + CY + "║")
+        print(CY + f" ╠{'═'*W2}╣")
+        kline = G + f" Key OK — expires in {_key_remaining_str()}" if _key_is_valid() else Y + " Key EXPIRED / missing — will re-grab"
+        print(CY + " ║" + kline.ljust(W2 + 12) + CY + "║")
+        print(CY + f" ╠{'═'*W2}╣")
+        print(CY + " ║" + DIM + W + f" {'Clone':<12}{'Status':<11}{'Crashes':<9}{'Info':<20}" + RS + CY + "║")
+        print(CY + f" ╠{'═'*W2}╣")
+        for pkg, s in state.items():
+            st = s["status"]; cr = s["crashes"]; lab = s["label"]
+            if st == "BOOTING":
+                elapsed = int(now - s["since"]) if s["since"] else 0
+                upt = f"boot {elapsed}s/{BOOT_GRACE}s"; sc = CY; icon = "○"
+            elif st == "LIVE" and s["since"]:
+                e = int(now - s["since"])
+                upt = f"{e//3600:02d}:{(e%3600)//60:02d}:{e%60:02d}"; sc = G + BR; icon = "●"
+            elif st == "WAIT":
+                rem = max(0, int(s["until"] - now)) if s["until"] else 0
+                upt = f"relaunch {rem}s"; sc = Y; icon = "~"
+            elif st == "KEY":
+                upt = "key dialog"; sc = M + BR; icon = "K"
+            elif st == "CAPTCHA":
+                upt = "captcha!"; sc = R + BR; icon = "!"
+            else:
+                upt = "starting…"; sc = DIM; icon = "○"
+            print(CY + " ║" + W + " " + sc + f"{lab:<12}" + RS + W +
+                  f"{icon} " + sc + f"{st:<10}" + RS + W +
+                  f"{cr:<9}" + DIM + f"{upt:<20}" + RS + CY + "║")
+        print(CY + f" ╚{'═'*W2}╝")
+        print(DIM + f"\n last check: {time.strftime('%H:%M:%S')}" + RS)
+    info("Killing all clones…")
+    for pkg in pkgs: kill(pkg)
+    time.sleep(1)
+    info("Launching all clones…")
+    for pkg in pkgs:
+        info(f" {state[pkg]['label']}…"); launch(pkg); time.sleep(0.8)
+    captcha_at = 0.0; key_at = 0.0
+    try:
+        while True:
+            now = time.time()
+            if now - captcha_at > 7:
+                if has_captcha():
+                    for pkg, s in state.items():
+                        if s["status"] == "LIVE":
+                            s["crashes"] += 1
+                            s["status"] = "WAIT"
+                            s["until"] = now + 12
+                            kill(pkg)
+                captcha_at = now
+            if now - key_at > 4:
+                if has_key_dialog():
+                    fg = get_foreground_pkg()
+                    if fg in state and state[fg]["status"] != "KEY":
+                        state[fg]["status"] = "KEY"
+                        state[fg]["key_try"] = 0
+                        state[fg]["force_fresh"] = False
+                key_at = now
+            for pkg, s in state.items():
+                st = s["status"]
+                if st == "WAIT":
+                    if s["until"] and now >= s["until"]: launch(pkg)
+                    continue
+                if st == "BOOTING":
+                    elapsed = now - (s["since"] or now)
+                    if elapsed >= BOOT_GRACE:
+                        if sh(f"pidof '{pkg}' 2>/dev/null", capture=True, timeout=4).strip():
+                            s["status"] = "LIVE"
+                        else:
+                            s["crashes"] += 1
+                            s["status"] = "WAIT"
+                            s["until"] = now + 12
+                    continue
+                if st == "LIVE":
+                    if not sh(f"pidof '{pkg}' 2>/dev/null", capture=True, timeout=4).strip():
+                        s["crashes"] += 1
+                        s["status"] = "WAIT"
+                        s["until"] = now + 12
+                        continue
+                if st == "KEY":
+                    result = handle_key_dialog(pkg=pkg, force_fresh=s["force_fresh"])
+                    s["force_fresh"] = False
+                    if result in ("entered", "none"):
+                        s["status"] = "LIVE"
+                        s["key_try"] = 0
+                    else:
+                        s["key_try"] += 1
+                        if s["key_try"] >= MAX_KEY_FAIL:
+                            s["key_try"] = 0
+                            warn(f"{s['label']} failed 3x — forcing new key")
+                            _clear_key()
+                            s["force_fresh"] = True
+                    continue
+            draw()
+            time.sleep(2.8)
+    except KeyboardInterrupt:
+        print()
+        info("Stopping — killing all clones…")
+        for pkg in pkgs: kill(pkg)
+        ok("All stopped.")
+        go()
+
+def aio():
+    banner(); hdr("AIO — Full Setup & Auto Relaunch")
+    info("Step 1/4: Installing APKs…")
+    install_apks(pause=False)
+    print()
+    info("Step 2/4: Cookie Login…")
+    cookies = read_cookies()
+    pkgs = cfg["packages"]
+    if cookies and pkgs:
+        cookie_login_all(pkgs, cookies)
+    else:
+        warn("Skipping login (no cookies or packages).")
+    print()
+    info("Step 3/4: Installing AOTR TrackStat into Delta autoexec…")
+    install_aotr_trackstat()
+    print()
+    info("Step 4/4: Starting Auto Relaunch (Ctrl+C to stop)…")
+    time.sleep(2)
+    begin_auto_relaunch()
+
+def settings_menu():
+    while True:
+        banner(); hdr("Settings"); print()
+        ak = G + BR + "ON" if cfg.get("auto_key", True) else R + BR + "OFF"
+        key = cfg.get("delta_key", "")
+        if key and key.startswith(KEY_PREFIX):
+            dk = G + key[:22] + "… " + (DIM + f"({_key_remaining_str()} left)" if _key_is_valid() else R + "EXPIRED")
+        else:
+            dk = R + "(none — will grab from Chrome)" + RS
+        print(W + f" {CY}[1]{W} First Launch Delay {DIM}-> {BR+Y}{cfg['first_launch_delay']}s")
+        print(W + f" {CY}[2]{W} Relaunch Threshold {DIM}-> {BR+Y}{cfg['relaunch_threshold']}s")
+        print(W + f" {CY}[3]{W} Auto Key {DIM}-> {ak}{RS}")
+        print(W + f" {CY}[4]{W} Cookie File {DIM}-> {Y}{cfg['cookies_path']}")
+        print(W + f" {CY}[5]{W} GoFile URL {DIM}-> {Y}{cfg['gofile_url'][:40]}")
+        print(W + f" {CY}[6]{W} Game ID {DIM}-> {Y}{cfg['game_id']}")
+        print(W + f" {CY}[7]{W} Delta Key {DIM}-> {dk}{RS}")
+        print(W + f" {CY}[8]{W} Force re-grab key now")
+        print(W + f" {CY}[9]{W} Install AOTR TrackStat (manual)")
+        print(W + f" {CY}[0]{W} Back"); print()
+        c = input(CY + " › " + W + "Choice: " + RS).strip()
+        if c == "1":
+            v = input(Y + " Delay (s): " + W).strip()
+            if v.isdigit(): cfg["first_launch_delay"] = int(v); ok("Saved.")
+        elif c == "2":
+            v = input(Y + " Threshold (s): " + W).strip()
+            if v.isdigit(): cfg["relaunch_threshold"] = int(v); ok("Saved.")
+        elif c == "3": cfg["auto_key"] = not cfg.get("auto_key", True); ok("Toggled.")
+        elif c == "4":
+            p = input(Y + " Path to cookies.txt: " + W).strip()
+            if os.path.exists(p): cfg["cookies_path"] = p; ok("Saved.")
+            else: err("Not found.")
+        elif c == "5": cfg["gofile_url"] = input(Y + " New URL: " + W).strip(); ok("Saved.")
+        elif c == "6": cfg["game_id"] = input(Y + " New Game ID: " + W).strip(); ok("Saved.")
+        elif c == "7":
+            print(); info(f"Paste your {KEY_PREFIX} key (blank to clear):")
+            k = input(Y + " Delta Key: " + W).strip()
+            if k and k.startswith(KEY_PREFIX): _save_key(k); ok("Saved with 24h timer.")
+            elif k == "": _clear_key(); ok("Cleared.")
+            else: err(f"Key must start with {KEY_PREFIX}")
+        elif c == "8":
+            _clear_key()
+            ok("Key cleared — will re-grab from Chrome on next KEY event.")
+        elif c == "9":
+            install_aotr_trackstat()
+            go()
+        elif c == "0": break
 
 def main():
     signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
