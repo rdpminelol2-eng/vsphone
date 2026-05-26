@@ -831,7 +831,7 @@ def grab_key_from_chrome():
     return ""
 def has_key_dialog() -> bool:
     xml = get_xml().lower()
-    return any(k in xml for k in ["receive key", "enter key", "key system", "welcome back", "getkey", "whitelisted", "successfully whitelisted"])
+    return any(k in xml for k in ["Receive Key", "enter key", "key system", "welcome back", "getkey", "whitelisted", "successfully whitelisted"])
 def _enter_stored_key(key: str) -> str:
     info(f"Entering key: {CY}{key[:20]}…{RS}")
     pos = find_element(KW_KEY_INPUT, clickable=True)
