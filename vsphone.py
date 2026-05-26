@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.13
-Fixed Auto Relaunch + No Focus Fighting
+VSPhone Roblox Auto Relauncher v6.14
+CPU/RAM Monitor + Bulletproof Delta Key
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -21,7 +21,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.13"
+VERSION = "6.14"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -31,7 +31,7 @@ ROBLOX_DOMAIN = ".roblox.com"
 COOKIE_PREFIX = "_|WARNING:-DO-NOT-SHARE-THIS"
 C_UTC = 13300000000000000
 E_UTC = 13580000000000000
-BOOT_GRACE = 25          # Increased for custom float APKs
+BOOT_GRACE = 25
 KEY_PREFIX = "FREE_"
 KEY_TTL = 86400
 MAX_KEY_FAIL = 3
@@ -109,6 +109,25 @@ class Config:
     def get(self, k, default=None): return self.data.get(k, default)
 
 cfg = Config()
+
+def get_system_stats():
+    """Get CPU and RAM usage"""
+    try:
+        # RAM
+        mem = sh("cat /proc/meminfo 2>/dev/null | head -5", capture=True, timeout=3)
+        total = int(re.search(r'MemTotal:\s+(\d+)', mem).group(1)) // 1024
+        free = int(re.search(r'MemAvailable:\s+(\d+)', mem).group(1)) // 1024
+        used = total - free
+        ram = f"{used}MB/{total}MB ({int(used/total*100)}%)"
+        
+        # CPU (simple average)
+        cpu = sh("top -n 1 -b 2>/dev/null | grep 'CPU:' | head -1", capture=True, timeout=3)
+        cpu_match = re.search(r'(\d+)%', cpu)
+        cpu_usage = cpu_match.group(1) + "%" if cpu_match else "N/A"
+        
+        return f"CPU: {cpu_usage}  RAM: {ram}"
+    except:
+        return "CPU/RAM: N/A"
 
 def _key_is_valid() -> bool:
     key = cfg.get("delta_key", "").strip()
@@ -230,7 +249,6 @@ def tap_element(terms):
     return False
 
 def bring_termux_foreground():
-    # Only call this when user is in menus
     for cmd in [
         "am start -n com.termux/.HomeActivity",
         "am start -n com.termux/.app.TermuxActivity"
@@ -319,7 +337,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.13
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.14
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats():
@@ -354,7 +372,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.13 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.14 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -744,24 +762,37 @@ def _read_clipboard() -> str:
     m = re.search(r"text=([^\s,]+)", out)
     return m.group(1).strip() if m else ""
 
-def grab_key_from_chrome() -> str:
+def grab_key_from_chrome():
+    """Bulletproof key grabbing with multiple methods"""
     xml = get_xml()
+    
+    # Method 1: Direct regex on screen
     m = re.search(r"FREE_[A-Za-z0-9_-]{20,}", xml)
     if m:
         key = m.group(0)
         info(f"Key found on screen: {CY}{key[:22]}…{RS}")
         tap_element(["Copy", "COPY", "copy"])
-        time.sleep(0.5)
+        time.sleep(0.8)
         return key
+    
+    # Method 2: Check clipboard
     clip = _read_clipboard()
     if clip.startswith(KEY_PREFIX):
         info(f"Key from clipboard: {CY}{clip[:22]}…{RS}")
         return clip
+    
+    # Method 3: Try tapping "Copy" again
+    if tap_element(["Copy", "COPY", "copy"]):
+        time.sleep(1)
+        clip = _read_clipboard()
+        if clip.startswith(KEY_PREFIX):
+            return clip
+    
     return ""
 
 def has_key_dialog() -> bool:
     xml = get_xml().lower()
-    return any(k in xml for k in ["receive key", "enter key", "key system", "welcome back", "getkey", "whitelisted"])
+    return any(k in xml for k in ["receive key", "enter key", "key system", "welcome back", "getkey", "whitelisted", "successfully whitelisted"])
 
 def _enter_stored_key(key: str) -> str:
     info(f"Entering key: {CY}{key[:20]}…{RS}")
@@ -772,41 +803,51 @@ def _enter_stored_key(key: str) -> str:
     sh(f"am broadcast -a clipper.set -e text '{safe}' 2>/dev/null", silent=True); time.sleep(0.3)
     sh("input keyevent KEYCODE_PASTE", silent=True); time.sleep(0.5)
     sh(f"input text '{safe}'", silent=True); time.sleep(0.4)
-    tap_element(KW_KEY_SUBMIT); time.sleep(1)
+    tap_element(KW_KEY_SUBMIT); time.sleep(1.5)
     return "entered"
 
 def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
     if pkg:
         sh(f"am start {pkg}", silent=True)
-        time.sleep(1.2)
+        time.sleep(1.5)
+    
     if not has_key_dialog():
         return "none"
+    
     if not force_fresh and _key_is_valid():
         stored = cfg.get("delta_key", "").strip()
         info(f"Using stored key ({_key_remaining_str()} left)")
         return _enter_stored_key(stored)
+    
     if force_fresh:
         warn("Forcing fresh key grab…")
     elif cfg.get("delta_key", ""):
         warn("Stored key expired — grabbing fresh from Chrome…")
     else:
         info("No stored key — grabbing from Chrome…")
+    
+    # Tap Receive Key
     if not tap_element(KW_KEY_RECEIVE):
         tap_element(["receive", "getkey", "get key"])
-    time.sleep(4.5)
+    
+    time.sleep(5)
+    
     key = ""
-    for _ in range(12):
+    for attempt in range(15):
         key = grab_key_from_chrome()
-        if key.startswith(KEY_PREFIX): break
+        if key.startswith(KEY_PREFIX):
+            break
         time.sleep(1.2)
+    
     if key.startswith(KEY_PREFIX):
         _save_key(key)
         ok(f"Key grabbed & saved (24h): {key[:18]}…")
         if pkg:
             sh(f"am start {pkg}", silent=True)
-            time.sleep(1.3)
+            time.sleep(1.5)
         return _enter_stored_key(key)
-    warn("Could not grab key from Chrome — will retry")
+    
+    warn("Could not grab key after multiple attempts — will retry next cycle")
     return "waiting"
 
 def begin_auto_relaunch():
@@ -828,7 +869,6 @@ def begin_auto_relaunch():
         }
 
     def launch(pkg):
-        # Better launch command for float APKs
         sh(f"am start -a android.intent.action.VIEW -d 'roblox://experiences/start?placeId={game_id}' {pkg}", silent=True)
         state[pkg].update({"since": time.time(), "status": "BOOTING", "until": None})
 
@@ -836,15 +876,18 @@ def begin_auto_relaunch():
         sh(f"am force-stop '{pkg}'", silent=True, timeout=5)
 
     def draw():
-        clr(); now = time.time(); W2 = 58
+        clr(); now = time.time(); W2 = 62
+        stats = get_system_stats()
         print()
         print(CY + f" ╔{'═'*W2}╗")
         print(CY + " ║" + Y + BR + f" AUTO RELAUNCH · {len(pkgs)} clone(s) · Ctrl+C to stop".ljust(W2) + RS + CY + "║")
         print(CY + f" ╠{'═'*W2}╣")
+        print(CY + " ║" + DIM + W + f" {stats}".ljust(W2) + RS + CY + "║")
+        print(CY + f" ╠{'═'*W2}╣")
         kline = G + f" Key OK — expires in {_key_remaining_str()}" if _key_is_valid() else Y + " Key EXPIRED / missing — will re-grab"
         print(CY + " ║" + kline.ljust(W2 + 12) + CY + "║")
         print(CY + f" ╠{'═'*W2}╣")
-        print(CY + " ║" + DIM + W + f" {'Clone':<12}{'Status':<11}{'Crashes':<9}{'Info':<20}" + RS + CY + "║")
+        print(CY + " ║" + DIM + W + f" {'Clone':<12}{'Status':<11}{'Crashes':<9}{'Info':<22}" + RS + CY + "║")
         print(CY + f" ╠{'═'*W2}╣")
         for pkg, s in state.items():
             st = s["status"]; cr = s["crashes"]; lab = s["label"]
@@ -865,7 +908,7 @@ def begin_auto_relaunch():
                 upt = "starting…"; sc = DIM; icon = "○"
             print(CY + " ║" + W + " " + sc + f"{lab:<12}" + RS + W +
                   f"{icon} " + sc + f"{st:<10}" + RS + W +
-                  f"{cr:<9}" + DIM + f"{upt:<20}" + RS + CY + "║")
+                  f"{cr:<9}" + DIM + f"{upt:<22}" + RS + CY + "║")
         print(CY + f" ╚{'═'*W2}╝")
         print(DIM + f"\n last check: {time.strftime('%H:%M:%S')}" + RS)
 
@@ -886,7 +929,6 @@ def begin_auto_relaunch():
         while True:
             now = time.time()
 
-            # Check for captcha
             if now - captcha_at > 8:
                 if has_captcha():
                     for pkg, s in state.items():
@@ -897,7 +939,6 @@ def begin_auto_relaunch():
                             kill(pkg)
                 captcha_at = now
 
-            # Check for key dialog
             if now - key_at > 5:
                 if has_key_dialog():
                     fg = get_foreground_pkg()
@@ -907,7 +948,6 @@ def begin_auto_relaunch():
                         state[fg]["force_fresh"] = False
                 key_at = now
 
-            # Main state machine
             for pkg, s in state.items():
                 st = s["status"]
 
@@ -950,7 +990,7 @@ def begin_auto_relaunch():
                     continue
 
             draw()
-            time.sleep(3.5)   # Slower loop = less interference
+            time.sleep(3.5)
 
     except KeyboardInterrupt:
         print()
@@ -1044,7 +1084,7 @@ def main():
         menu_item("1", "Install / Uninstall APKs", f"slots used: {noka}/{MAX_CLONES}")
         menu_item("2", "Cookie Login / Logout", f"{len(cfg['packages'])} package(s) ready")
         menu_item("3", "AIO — Full Setup & Relaunch", "install + login + trackstat + auto")
-        menu_item("4", "Begin Auto Relaunch", "background mode (no focus fighting)")
+        menu_item("4", "Begin Auto Relaunch", "background mode + CPU/RAM monitor")
         menu_item("5", "Settings", "configure")
         menu_item("0", "Exit", "")
         print(CY + " └─────────────────────────────────────────────┘")
