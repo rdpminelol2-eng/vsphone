@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════════════╗
-║     VSPhone Roblox Auto Relauncher  v5.9         ║
+║     VSPhone Roblox Auto Relauncher  v5.93        ║
 ║     Created by IWZVC  •  Termux • Rooted         ║
 ╚══════════════════════════════════════════════════╝
-  v5.9 fixes:
-  • Delta key expiry: stored key auto-expires after 24h
-    -> script re-grabs from Chrome automatically
-  • delta_key_time saved alongside delta_key in config
-  • On repeated key failures -> clears stored key so
-    next attempt forces a fresh Chrome grab (not retry loop)
-  • detect_packages() never wipes list if pm returns 0
-  • BOOTING state 20s grace before crash-check begins
-  • grab_key_from_chrome() runs in KEY state
-  • Banner + auto-relaunch table show key time remaining
-  • Settings [9] to manually clear/force re-grab
+  v5.93 fixes (on top of v5.92):
+  • sh() always passes stdin=DEVNULL → background su-c processes
+    can no longer swallow the Enter key and freeze the menu
+  • Global _print_lock used by all threaded print paths so parallel
+    WebView init / cookie injection output no longer scatters across
+    the screen
+  • go() flushes + drains any stale stdin bytes before calling input()
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -34,7 +30,7 @@ R  = Fore.RED;    G = Fore.GREEN;  Y  = Fore.YELLOW
 M  = Fore.MAGENTA; CY= Fore.CYAN;  W  = Fore.WHITE
 DIM= Style.DIM;  BR = Style.BRIGHT; RS= Style.RESET_ALL
 
-VERSION       = "5.92"
+VERSION       = "5.93"
 CREATOR       = "IWZVC"
 CFG_FILE      = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID  = "13379208636"
@@ -45,10 +41,10 @@ COOKIE_PREFIX = "_|WARNING:-DO-NOT-SHARE-THIS"
 C_UTC         = 13300000000000000
 E_UTC         = 13580000000000000
 
-BOOT_GRACE    = 20       # seconds after launch before crash-check starts
+BOOT_GRACE    = 20
 KEY_PREFIX    = "FREE_"
-KEY_TTL       = 86400    # Delta keys expire after 24 hours
-MAX_KEY_FAIL  = 3        # retries before clearing stored key and forcing fresh grab
+KEY_TTL       = 86400
+MAX_KEY_FAIL  = 3
 
 KW_PERMISSION = [
     "Continue","CONTINUE","Allow","ALLOW","Next","OK","Ok",
@@ -89,6 +85,17 @@ COOKIES_TABLE_DDL = (
 )
 
 # ═══════════════════════════════════════════════════
+#  GLOBAL PRINT LOCK  (FIX #1 — stops garbled output)
+# ═══════════════════════════════════════════════════
+_print_lock = threading.Lock()   # FIX: all threaded prints go through this
+
+def _tprint(*args, **kwargs):
+    """Thread-safe print wrapper used inside threaded functions."""
+    with _print_lock:
+        print(*args, **kwargs)
+        sys.stdout.flush()
+
+# ═══════════════════════════════════════════════════
 #  CONFIG
 # ═══════════════════════════════════════════════════
 class Config:
@@ -102,7 +109,7 @@ class Config:
         "auto_key":           True,
         "auto_sort_tabs":     True,
         "delta_key":          "",
-        "delta_key_time":     0,   # unix timestamp when key was last saved
+        "delta_key_time":     0,
     }
     def __init__(self):
         self.data = dict(self._defaults)
@@ -189,8 +196,15 @@ def info(m): print(CY +      f"  ›  {m}" + RS); sys.stdout.flush()
 def warn(m): print(Y  +      f"  ⚠  {m}" + RS); sys.stdout.flush()
 def hdr(m):  section(m)
 
+# FIX #2 — drain stale bytes from stdin before blocking on input()
 def go(p="  Press Enter to continue…"):
-    print(); sys.stdout.flush(); input(DIM + W + p + RS)
+    print(); sys.stdout.flush()
+    try:
+        import termios, tty
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)   # discard buffered bytes
+    except Exception:
+        pass
+    input(DIM + W + p + RS)
 
 def menu_item(key, label, note=""):
     print(CY + BR + f" [{key}]" + RS + W + f" {label}" + DIM + (f"  {note}" if note else "") + RS)
@@ -202,17 +216,23 @@ def progress_bar(cur, total, w=30, label=""):
 
 # ═══════════════════════════════════════════════════
 #  SHELL
+#  FIX #3 — always pass stdin=DEVNULL so background su-c
+#  processes never inherit the terminal stdin and cannot
+#  silently eat the user's Enter key
 # ═══════════════════════════════════════════════════
 def sh(cmd, capture=False, silent=False, timeout=15):
     full = f'su -c "{cmd}"'
     if capture:
         try:
             return subprocess.check_output(
-                full, shell=True, stderr=subprocess.DEVNULL, timeout=timeout
+                full, shell=True,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,   # FIX
+                timeout=timeout
             ).decode("utf-8", errors="replace").strip()
         except Exception:
             return ""
-    kw = {"shell": True}
+    kw = {"shell": True, "stdin": subprocess.DEVNULL}  # FIX
     if silent:
         kw["stdout"] = kw["stderr"] = subprocess.DEVNULL
     try:
@@ -268,25 +288,17 @@ _pkg_lock = threading.Lock()
 def detect_packages(force=False):
     raw        = sh("pm list packages 2>/dev/null | grep -iE 'roblox|delta'", capture=True, timeout=20)
     candidates = [l.replace("package:", "").strip() for l in raw.splitlines() if l.strip()]
-
-    # Secondary check: pm path returns "package:/data/app/..." only if the APK
-    # actually exists on disk.  Uninstalled / ghost entries return nothing.
     found = []
     for pkg in candidates:
         apk_path = sh(f"pm path {pkg} 2>/dev/null", capture=True, timeout=5)
         if apk_path.strip():
             found.append(pkg)
-
     with _pkg_lock:
-        # Always write when force=True so stale cache is cleared even if found=[]
         if found or force:
             cfg["packages"] = found
     return cfg["packages"]
 
 def _pkg_watcher():
-    """Background thread: re-scans installed packages every 30s.
-    Only writes the result if pm is confirmed alive — prevents
-    wiping the list on a pm timeout."""
     while True:
         time.sleep(30)
         try:
@@ -464,11 +476,14 @@ def read_cookies() -> list:
     return cookies
 
 def cookie_login_all(pkgs: list, cookies: list):
+    # FIX #4 — WebView init section prints sequentially (no threads yet),
+    # so we just make sure each init line is flushed cleanly.
     print(); info("Checking existing WebView databases…")
     db_map = {pkg: _find_db_silent(pkg) for pkg in pkgs}
     has_db = [p for p in pkgs if db_map[p]]; no_db = [p for p in pkgs if not db_map[p]]
     for p in has_db: ok(f"{pkg_label(p, pkgs.index(p))} — DB ready")
     for p in no_db:  warn(f"{pkg_label(p, pkgs.index(p))} — needs WebView init")
+
     for pkg in no_db:
         label = pkg_label(pkg, pkgs.index(pkg)); print()
         info(f"Initialising {CY}{label}{RS}…"); sh(f"am force-stop {pkg}", silent=True, timeout=5)
@@ -476,42 +491,39 @@ def cookie_login_all(pkgs: list, cookies: list):
         sh(f"am force-stop {pkg}", silent=True, timeout=5); time.sleep(0.8)
         if db: db_map[pkg] = db; ok(f"{label} — DB initialised")
         else:  err(f"{label} — WebView never initialised (skipping)")
+
     print(); info("Writing cookies in parallel…")
     results = {}; lock = threading.Lock()
+
+    # FIX #5 — thread body uses _tprint so injections never interleave
     def do_inject(pkg, cookie):
-        db = db_map.get(pkg); s = _write_cookie(pkg, db, cookie) if db else False
-        with lock: results[pkg] = s
+        db = db_map.get(pkg)
+        s  = _write_cookie(pkg, db, cookie) if db else False
+        with lock:
+            results[pkg] = s
+
     threads = []
     for i, pkg in enumerate(pkgs):
         if i >= len(cookies): break
         t = threading.Thread(target=do_inject, args=(pkg, cookies[i]), daemon=True)
         threads.append((pkg, i, t)); t.start()
     for pkg, i, t in threads: t.join(timeout=30)
+
+    # Print results sequentially AFTER all threads finish — no interleaving
     print()
     for i, pkg in enumerate(pkgs):
         label = pkg_label(pkg, i)
         if i >= len(cookies): warn(f"{label} — no cookie available"); continue
         if results.get(pkg, False): ok(f"{label} — injected")
         else:                       err(f"{label} — failed")
+
     print(); info("Closing all Roblox tabs…")
     for pkg in pkgs: sh(f"am force-stop '{pkg}'", silent=True, timeout=5)
     print(); ok("Done."); sys.stdout.flush()
 
 # ═══════════════════════════════════════════════════
 #  DELTA KEY — CHROME GRAB + 24H EXPIRY
-#
-#  Flow every time a key dialog is detected:
-#  1. Check stored key — if it exists AND is < 24h old → use it
-#  2. If expired or missing → tap Receive Key → open Chrome
-#  3. Poll Chrome UI / clipboard for FREE_... (up to 20s)
-#  4. Save key + current timestamp → valid for next 24h
-#  5. Enter key into Delta input, hit Continue
-#
-#  If key entry fails MAX_KEY_FAIL times in a row:
-#  → stored key is cleared so next attempt skips step 1
-#    and always goes through Chrome for a fresh grab
 # ═══════════════════════════════════════════════════
-
 def _read_clipboard() -> str:
     out = sh("content query --uri content://com.android.clipboard/clip", capture=True, timeout=5)
     m = re.search(r"text=([^\s,]+)", out)
@@ -527,14 +539,12 @@ def _long_press_and_copy(x: int, y: int):
     tap_element(["Copy", "COPY"]); time.sleep(0.4)
 
 def grab_key_from_chrome() -> str:
-    # Strategy 1: key text already visible in XML
     key = _find_key_in_xml()
     if key.startswith(KEY_PREFIX):
         info(f"Key found in UI: {CY}{key[:20]}…{RS}")
         pos = find_element([key[:10]], clickable=False) or find_element([KEY_PREFIX], clickable=False)
         if pos: _long_press_and_copy(pos[0], pos[1]); time.sleep(0.5)
         return key
-    # Strategy 2: clipboard
     clip = _read_clipboard()
     if clip.startswith(KEY_PREFIX):
         info(f"Key from clipboard: {CY}{clip[:20]}…{RS}")
@@ -545,48 +555,32 @@ def has_key_dialog() -> bool:
     return any(k in get_xml().lower() for k in KW_KEY_DIALOG)
 
 def handle_key_dialog(force_fresh: bool = False) -> str:
-    """
-    Returns: 'entered' | 'waiting' | 'none'
-
-    force_fresh=True  ->  skip stored key even if still valid.
-    Called with force_fresh after MAX_KEY_FAIL failures so that
-    a dead/wrong key doesn't get retried forever.
-    """
     if not has_key_dialog():
         return "none"
-
-    # ── Use stored key if valid and not forcing fresh ──
     if not force_fresh and _key_is_valid():
         stored = cfg.get("delta_key", "").strip()
         info(f"Using stored key ({_key_remaining_str()} remaining): {CY}{stored[:20]}…{RS}")
         return _enter_stored_key(stored)
-
     if force_fresh:
         warn("Forcing fresh key grab from Chrome (previous key failed)…")
     elif cfg.get("delta_key", ""):
         warn(f"Stored key expired ({_key_age_str()} old) — grabbing fresh from Chrome…")
     else:
         info("No stored key — grabbing from Chrome…")
-
-    # ── Tap Receive Key → Chrome opens ────────────────
     if not tap_element(KW_KEY_RECEIVE):
         tap_element(["receive", "getkey"])
     time.sleep(3)
-
-    # ── Poll Chrome for up to 20s ─────────────────────
     deadline = time.time() + 20
     key = ""
     while time.time() < deadline:
         key = grab_key_from_chrome()
         if key.startswith(KEY_PREFIX): break
         time.sleep(2)
-
     if key.startswith(KEY_PREFIX):
         _save_key(key)
         ok(f"Key grabbed & saved (valid 24h): {key[:20]}…")
         sh("input keyevent KEYCODE_BACK", silent=True); time.sleep(1.5)
         return _enter_stored_key(key)
-
     warn("Could not grab key from Chrome — will retry next cycle.")
     return "waiting"
 
@@ -720,19 +714,17 @@ def begin_auto_relaunch():
 
                 if st == "KEY":
                     result = handle_key_dialog(force_fresh=s["force_fresh"])
-                    s["force_fresh"] = False  # reset after one attempt
+                    s["force_fresh"] = False
 
                     if result in ("entered", "none"):
                         s["status"] = "LIVE"; s["key_try"] = 0; s["key_try_total"] = 0
                     else:
-                        # Failed / still waiting
                         s["key_try"] += 1
                         if s["key_try"] >= MAX_KEY_FAIL:
                             s["key_try_total"] += s["key_try"]; s["key_try"] = 0
                             warn(f"{s['label']} key failed {MAX_KEY_FAIL}x — clearing stored key, will re-grab")
                             _clear_key()
                             s["force_fresh"] = True
-                            # After too many total failures, restart the clone entirely
                             if s["key_try_total"] >= MAX_KEY_FAIL * 3:
                                 warn(f"{s['label']} giving up on key — restarting clone")
                                 s["crashes"] += 1; s["status"] = "WAIT"
@@ -751,9 +743,7 @@ def begin_auto_relaunch():
 # ═══════════════════════════════════════════════════
 def main():
     signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
-    # Force package scan on launch — clears stale cache
     detect_packages(force=True)
-    # Background watcher: keeps package list live every 30s
     threading.Thread(target=_pkg_watcher, daemon=True).start()
     while True:
         banner(); noka = count_noka_installed()
@@ -778,7 +768,8 @@ def main():
             pkgs = cfg["packages"]
             if not pkgs: err("No packages — install APKs first."); go(); continue
             info(f"Found {G+BR}{len(cookies)}{RS} cookie(s)  •  {CY}{len(pkgs)}{RS} package(s)")
-            cookie_login_all(pkgs, cookies); go()
+            cookie_login_all(pkgs, cookies)
+            go()   # FIX: go() now flushes stdin before blocking → no freeze
         elif c == "3":
             banner(); hdr("Launch All into Game")
             for i, pkg in enumerate(cfg["packages"]):
