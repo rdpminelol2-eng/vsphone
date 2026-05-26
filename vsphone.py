@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.16 - FIXED
-- Fixed CPU stats (no longer N/A)
-- Fixed auto_sort_tabs (removed screen-resizing bug that caused messed up floating windows/UI)
-- Improved Delta key handling for floating windows (properly re-brings minimized Noka tabs after Chrome opens for key)
+VSPhone Roblox Auto Relauncher v6.16
+- CPU stats now reliable on multi-core devices
+- Verbose Delta key logging (shows every step + failure reasons)
+- Background key dialog detection for floating windows (catches minimized Noka tabs)
+- Versioning rule: +0.01 for small fixes, major jumps for big features
 """
 import os, sys, time, subprocess, re, signal, threading
 import sqlite3 as _sq3
@@ -19,7 +20,7 @@ except ImportError:
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
-VERSION = "6.15"
+VERSION = "6.16"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -811,14 +812,13 @@ def _enter_stored_key(key: str) -> str:
     return "entered"
 def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
     label = pkg_label(pkg, 0) if pkg else "unknown"
-    info(f"[{label}] Checking key dialog...")
+    info(f"[{label}] Starting key handler (caller confirmed dialog exists)...")
     if pkg:
         sh(f"am start {pkg}", silent=True)
         time.sleep(1.5)
    
-    if not has_key_dialog():
-        info(f"[{label}] No key dialog found right now")
-        return "none"
+    # Removed early has_key_dialog check — caller already confirmed it.
+    # This prevents floating window focus issues from falsely returning "none".
    
     if not force_fresh and _key_is_valid():
         stored = cfg.get("delta_key", "").strip()
@@ -907,7 +907,8 @@ def begin_auto_relaunch():
     def kill(pkg):
         sh(f"am force-stop '{pkg}'", silent=True, timeout=5)
     def draw():
-        clr(); now = time.time(); W2 = 62
+        # Removed clr() so debug messages from key system stay visible on screen
+        now = time.time(); W2 = 62
         stats = get_system_stats()
         print()
         print(CY + f" ╔{'═'*W2}╗")
