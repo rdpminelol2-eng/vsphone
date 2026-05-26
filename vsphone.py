@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.15 - FIXED
+VSPhone Roblox Auto Relauncher v6.16 - FIXED
 - Fixed CPU stats (no longer N/A)
 - Fixed auto_sort_tabs (removed screen-resizing bug that caused messed up floating windows/UI)
 - Improved Delta key handling for floating windows (properly re-brings minimized Noka tabs after Chrome opens for key)
@@ -111,9 +111,9 @@ def get_system_stats():
         else:
             ram = "N/A"
        
-        # FIXED: No longer relies on 'CPU:' line (which doesn't exist on many Android devices)
-        cpu = sh("top -n 1 -b 2>/dev/null | head -10", capture=True, timeout=3)
-        cpu_match = re.search(r'(\d+)%', cpu)
+        # Improved CPU parsing for multi-core devices (shows total % across all cores)
+        cpu_raw = sh("top -n 1 -b 2>/dev/null | head -8", capture=True, timeout=3)
+        cpu_match = re.search(r'(\d+)%\s+user', cpu_raw, re.I) or re.search(r'(\d+)%', cpu_raw)
         cpu_usage = cpu_match.group(1) + "%" if cpu_match else "N/A"
        
         return f"CPU: {cpu_usage} RAM: {ram}"
@@ -810,52 +810,66 @@ def _enter_stored_key(key: str) -> str:
     tap_element(KW_KEY_SUBMIT); time.sleep(1.5)
     return "entered"
 def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
+    label = pkg_label(pkg, 0) if pkg else "unknown"
+    info(f"[{label}] Checking key dialog...")
     if pkg:
         sh(f"am start {pkg}", silent=True)
         time.sleep(1.5)
    
     if not has_key_dialog():
+        info(f"[{label}] No key dialog found right now")
         return "none"
    
     if not force_fresh and _key_is_valid():
         stored = cfg.get("delta_key", "").strip()
-        info(f"Using stored key ({_key_remaining_str()} left)")
+        info(f"[{label}] Using stored key ({_key_remaining_str()} left)")
         return _enter_stored_key(stored)
    
     if force_fresh:
-        warn("Forcing fresh key grab…")
+        warn(f"[{label}] Forcing fresh key grab…")
     elif cfg.get("delta_key", ""):
-        warn("Stored key expired — grabbing fresh from Chrome…")
+        warn(f"[{label}] Stored key expired — grabbing fresh from Chrome…")
     else:
-        info("No stored key — grabbing from Chrome…")
+        info(f"[{label}] No stored key — grabbing from Chrome…")
    
-    if not tap_element(KW_KEY_RECEIVE):
-        tap_element(["receive", "getkey", "get key"])
+    info(f"[{label}] Tapping 'Receive Key' button...")
+    tapped = tap_element(KW_KEY_RECEIVE)
+    if not tapped:
+        tapped = tap_element(["receive", "getkey", "get key", "Receive Key"])
+    if tapped:
+        info(f"[{label}] Tapped Receive Key successfully — waiting for Chrome...")
+    else:
+        warn(f"[{label}] Could not tap Receive Key button!")
    
-    # FIXED for floating windows: longer wait so Chrome fully opens and key appears
-    time.sleep(6)
+    # Wait for Chrome to fully load the key page
+    time.sleep(7)
    
     key = ""
-    for attempt in range(20):  # more attempts for reliability
+    info(f"[{label}] Searching for FREE_ key in Chrome (20 attempts)...")
+    for attempt in range(20):
         key = grab_key_from_chrome()
         if key.startswith(KEY_PREFIX):
+            info(f"[{label}] Key found on attempt {attempt+1}!")
             break
-        time.sleep(1.5)
+        if attempt % 5 == 0:
+            info(f"[{label}] Attempt {attempt+1}/20 — still looking for key...")
+        time.sleep(1.3)
    
     if key.startswith(KEY_PREFIX):
         _save_key(key)
-        ok(f"Key grabbed & saved (24h): {key[:18]}…")
+        ok(f"[{label}] Key grabbed & saved (24h): {key[:18]}…")
         if pkg:
-            # FIXED: Explicitly re-bring the specific Noka floating window back after Chrome took focus
-            info("Bringing Noka tab back to front (floating window fix)...")
+            info(f"[{label}] Bringing Noka floating window back to front...")
             sh(f"am start {pkg}", silent=True)
             time.sleep(2.0)
-            # Extra tap to refocus the floating window (common fix when it minimizes on focus loss)
-            sh("input tap 150 300", silent=True)
+            sh("input tap 150 300", silent=True)  # refocus floating window
             time.sleep(0.6)
-        return _enter_stored_key(key)
+        info(f"[{label}] Entering key into Noka...")
+        result = _enter_stored_key(key)
+        ok(f"[{label}] Key successfully entered!")
+        return result
    
-    warn("Could not grab key after multiple attempts — will retry next cycle")
+    warn(f"[{label}] FAILED to grab key after 20 attempts — possible reasons: Chrome didn't load the key, key not visible on screen, or clipboard blocked. Will retry next cycle.")
     return "waiting"
 def auto_sort_tabs():
     if not cfg.get("auto_sort_tabs", True):
@@ -960,8 +974,9 @@ def begin_auto_relaunch():
                         state[fg]["key_try"] = 0
                         state[fg]["force_fresh"] = False
                 key_at = now
-            # NEW: Periodic full check for all clones (catches key dialogs in floating/minimized windows)
+            # Periodic full check for ALL clones (catches key dialogs even in minimized floating windows)
             if now - key_full_check_at > 18:
+                info("Checking all clones for stuck key dialogs...")
                 for p in pkgs:
                     if state[p]["status"] == "LIVE":
                         sh(f"am start {p}", silent=True)
@@ -971,7 +986,7 @@ def begin_auto_relaunch():
                                 state[p]["status"] = "KEY"
                                 state[p]["key_try"] = 0
                                 state[p]["force_fresh"] = False
-                                info(f"Detected key dialog on {state[p]['label']} (background check)")
+                                info(f"[{state[p]['label']}] Found key dialog — will grab & enter now")
                 key_full_check_at = now
             if cfg.get("auto_sort_tabs", True) and now - sort_at > 45:
                 auto_sort_tabs()
