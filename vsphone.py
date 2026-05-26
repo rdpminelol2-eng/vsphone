@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-VSPhone Roblox Auto Relauncher v6.11
-Chrome Sync Fix + Wait for Enter after Download
+VSPhone Roblox Auto Relauncher v6.12
+Clean GoFile + Delete APKs Option
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -21,7 +21,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.11"
+VERSION = "6.12"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -319,7 +319,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.11
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.12
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats():
@@ -354,7 +354,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.11 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.12 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -394,6 +394,55 @@ def scan_noka_apks() -> dict:
             noka_map[n] = apk
     return noka_map
 
+def delete_downloaded_apks():
+    banner(); hdr("Delete Downloaded Noka APKs")
+    download_dir = Path("/storage/emulated/0/Download")
+    apks = list(download_dir.glob("*.apk"))
+    
+    if not apks:
+        err("No APK files found in Downloads folder.")
+        go()
+        return
+    
+    print(W + "APK files found in Downloads:")
+    for i, apk in enumerate(apks, 1):
+        print(f"  {CY}[{i}]{W} {apk.name} ({apk.stat().st_size // 1024} KB)")
+    print()
+    
+    choice = input(Y + "Delete all? [Y/n] or enter numbers to delete: " + W).strip().lower()
+    
+    to_delete = []
+    if choice == "y":
+        to_delete = apks
+    elif choice == "n":
+        info("Cancelled.")
+        go()
+        return
+    else:
+        try:
+            nums = [int(x) for x in choice.split()]
+            to_delete = [apks[n-1] for n in nums if 1 <= n <= len(apks)]
+        except:
+            err("Invalid input.")
+            go()
+            return
+    
+    if not to_delete:
+        info("Nothing to delete.")
+        go()
+        return
+    
+    for apk in to_delete:
+        try:
+            apk.unlink()
+            ok(f"Deleted: {apk.name}")
+        except Exception as e:
+            err(f"Failed to delete {apk.name}: {e}")
+    
+    print()
+    ok(f"Deleted {len(to_delete)} APK file(s).")
+    go()
+
 def install_apks(pause=True):
     banner(); hdr("Install Noka Delta Lite APKs")
     detect_packages()
@@ -423,11 +472,10 @@ def install_apks(pause=True):
         choice = input(Y + " Open GoFile to download missing APKs? [Y/n]: " + W).strip().lower()
         if choice == "y":
             print("Opening GoFile in Chrome...")
-            # === EXACT LOGIC FROM YOUR OLD SCRIPT ===
-            sh(f"am start -a android.intent.action.VIEW -d 'https://gofile.io/d/9ucwee'")
-            time.sleep(5)
-            # Wait for user to download
-            input(C.YELLOW + "\nDownload finished? Press Enter... ")
+            # Clean opening - no spam
+            sh("termux-open-url 'https://gofile.io/d/9ucwee'", silent=True)
+            time.sleep(4)
+            input(Y + "\nDownload finished? Press Enter... ")
             bring_termux_foreground()
         elif choice == "n":
             info("Skipping GoFile — installing whatever is available.")
@@ -495,11 +543,13 @@ def apk_menu():
         noka = count_noka_installed()
         menu_item("1", "Install APKs", f"slots used: {noka}/{MAX_CLONES}")
         menu_item("2", "Uninstall APKs", f"{noka} installed")
+        menu_item("3", "Delete Downloaded APKs", "clean Downloads folder")
         menu_item("0", "Back to Main Menu")
         print()
         c = input(CY + " › " + W + "Choice: " + RS).strip()
         if c == "1": install_apks()
         elif c == "2": uninstall_apks()
+        elif c == "3": delete_downloaded_apks()
         elif c == "0": break
 
 def db_exists(path: str) -> bool:
