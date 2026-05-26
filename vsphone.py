@@ -65,9 +65,9 @@ KW_PERMISSION = ["Continue", "CONTINUE", "Allow", "ALLOW", "Next", "OK", "Ok",
 # NOTE: "receive key" removed from permission list — it's handled exclusively
 # by the key handler. Having it in the background tapper caused it to fire at
 # wrong times and open Chrome before the handler was ready.
-KW_KEY_RECEIVE  = ["receive key", "getkey", "get key", "receivekey"]
-KW_KEY_INPUT    = ["key_example", "enter key", "key example", "paste key"]
-KW_KEY_SUBMIT   = ["continue", "submit", "confirm"]
+KW_KEY_RECEIVE  = ["receive key", "getkey", "get key", "receivekey", "receive", "get key", "tap to receive", "receive your key"]
+KW_KEY_INPUT    = ["key_example", "KEY_Example", "enter key", "key example", "paste key", "your key", "key input"]
+KW_KEY_SUBMIT   = ["continue", "submit", "confirm", "continue key", "submit key"]
 
 WEBVIEW_DB_ORDERED = [
     "app_webview/Default/Cookies",
@@ -858,6 +858,7 @@ def has_key_dialog() -> bool:
     return any(k in xml for k in [
         "receive key", "enter key", "key system", "welcome back",
         "getkey", "whitelisted", "successfully whitelisted",
+        "key dialog", "delta key", "paste your key", "enter your key",
     ])
 
 def _read_chrome_url_bar() -> str:
@@ -938,19 +939,20 @@ def grab_key_from_chrome() -> str:
 
 def _enter_stored_key(key: str) -> str:
     info(f"Entering key: {CY}{key[:20]}…{RS}")
-    # Focus the key input field
-    if not tap_element(KW_KEY_INPUT):
-        # Try broader terms if exact labels not found
-        tap_element(["edit","input","field","text"])
+    # Click KEY_Example / key input field (simple & reliable — searches full screen)
+    tapped_input = tap_element(KW_KEY_INPUT)
+    if not tapped_input:
+        # Fallback: any input-like field
+        tap_element(["key", "example", "input", "paste", "enter key", "text field"])
+    time.sleep(0.7)  # give it time to focus
+    # Paste the key (clipboard is fastest & most reliable on Android)
+    _set_clipboard(key)
+    time.sleep(0.3)
+    sh("input keyevent KEYCODE_PASTE", silent=True)
     time.sleep(0.5)
-    # Select all existing text and replace
-    sh("input keyevent KEYCODE_CTRL_A", silent=True); time.sleep(0.2)
-    # Put key in clipboard then paste — most reliable on Android
-    _set_clipboard(key); time.sleep(0.4)
-    sh("input keyevent KEYCODE_PASTE", silent=True); time.sleep(0.6)
-    # Tap submit
+    # Tap Continue / Submit (simple)
     tap_element(KW_KEY_SUBMIT)
-    time.sleep(1.5)
+    time.sleep(1.2)
     return "entered"
 
 
@@ -984,7 +986,9 @@ def handle_key_dialog(pkg: str = None, force_fresh: bool = False) -> str:
     tapped = False
     for attempt in range(8):
         xml = get_xml()
-        pos = find_element(KW_KEY_RECEIVE + ["receive","get key"], clickable=True, xml=xml)
+        # Search ENTIRE screen (clickable=False) — some key buttons report clickable=false in uiautomator dump
+        # This matches how permission/Chrome auto-taps work reliably across the full UI tree
+        pos = find_element(KW_KEY_RECEIVE + ["receive","get key", "receive key"], clickable=False, xml=xml)
         if pos:
             sh(f"input tap {pos[0]} {pos[1]}", silent=True)
             info(f"[{label}] Tapped 'Receive Key' at {pos} (attempt {attempt+1})")
