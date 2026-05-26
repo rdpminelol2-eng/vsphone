@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 ╔══════════════════════════════════════════════════╗
-║ VSPhone Roblox Auto Relauncher v6.2              ║
+║ VSPhone Roblox Auto Relauncher v6.3              ║
 ║ Created by IWZVC • Termux • Rooted               ║
 ╚══════════════════════════════════════════════════╝
-v6.2 — Auto-installs AOTR TrackStat into /delta/autoexec
+v6.3 — Fixed has_captcha + Manual per-package Cookie + Auto-flow AIO
 """
 
 import os, sys, time, subprocess, re, signal, threading
@@ -24,7 +24,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "6.2"
+VERSION = "6.3"
 CREATOR = "IWZVC"
 CFG_FILE = os.path.expanduser("~/.vsphone.yaml")
 AOTR_GAME_ID = "13379208636"
@@ -255,6 +255,9 @@ def get_foreground_pkg() -> str:
     except:
         return ""
 
+def has_captcha() -> bool:
+    return any(k in get_xml().lower() for k in ["captcha","verify you are","not a robot","security check"])
+
 _pkg_lock = threading.Lock()
 
 def detect_packages(force=False):
@@ -287,7 +290,6 @@ def pkg_label(pkg: str, idx: int) -> str:
     if m: return f"Noka {m.group(1)}"
     return f"Noka {idx + 1}"
 
-# === AOTR TRACKSTAT AUTO-INSTALL (NEW in v6.2) ===
 def install_aotr_trackstat():
     folder = Path(DELTA_AUTOEXEC_PATH)
     try:
@@ -296,9 +298,7 @@ def install_aotr_trackstat():
         err(f"Cannot create autoexec folder: {e}")
         return False
 
-    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.2
--- Sends gold, gems, scrolls, username + rates to your Discord webhook
-
+    lua_code = '''-- AOTR TrackStat v1.1 — Auto-installed by VSPhone v6.3
 local webhook = "https://discord.com/api/webhooks/1505645833075298345/xezkV4n0logucMqxqI0BlW5Inqx0x-sBHOMuYhsG8G-6l8-bYQZSSa03eZy1utL9d9nc"
 
 local function getStats()
@@ -311,7 +311,7 @@ local function getStats()
 end
 
 local lastGold, lastGems, lastTime = 0, 0, tick()
-local interval = 300 -- every 5 minutes
+local interval = 300
 
 while true do
     local gold, gems, scrolls, username = getStats()
@@ -320,8 +320,6 @@ while true do
     
     local goldPerHour = (gold - lastGold) / dtHours
     local gemsPerHour = (gems - lastGems) / dtHours
-    
-    -- Your exact rates: 50k gems = 500 spins, 1m gold = 1k gems
     local spinsPerHour = (gemsPerHour * 0.01) + ((goldPerHour / 1000000) * 1000 * 0.01)
     
     local embed = {
@@ -335,7 +333,7 @@ while true do
             {name = "📈 Gems/Hour", value = string.format("%.0f", gemsPerHour), inline = true},
             {name = "🎰 Spins/Hour", value = string.format("%.1f", spinsPerHour), inline = true},
         },
-        footer = {text = "VSPhone v6.2 • " .. os.date("%H:%M")},
+        footer = {text = "VSPhone v6.3 • " .. os.date("%H:%M")},
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     
@@ -375,7 +373,7 @@ def scan_noka_apks() -> dict:
             noka_map[n] = apk
     return noka_map
 
-def install_apks():
+def install_apks(pause=True):
     banner(); hdr("Install Noka Delta Lite APKs")
     detect_packages()
     already = count_noka_installed()
@@ -384,7 +382,9 @@ def install_apks():
     print(W + f" Available : {G+BR}{can_add}{RS} slot(s)")
     print()
     if can_add <= 0:
-        ok("All 10 slots full."); go(); return
+        ok("All 10 slots full.")
+        if pause: go()
+        return
     want_raw = input(Y + f" How many to install? (1-{can_add}): " + W).strip()
     want = min(int(want_raw) if want_raw.isdigit() else 1, can_add)
     needed_slots = list(range(already + 1, already + 1 + want))
@@ -427,7 +427,7 @@ def install_apks():
     print()
     if installed_any: detect_packages(force=True)
     bring_termux_foreground()
-    go()
+    if pause: go()
 
 def uninstall_apks():
     banner(); hdr("Uninstall Noka Delta Lite APKs")
@@ -620,10 +620,80 @@ def cookie_logout_all(pkgs: list):
     bring_termux_foreground()
     print(); ok("Logout complete."); go()
 
+def manual_cookie_login():
+    banner(); hdr("Manual Cookie Login (per package)")
+    pkgs = cfg["packages"]
+    if not pkgs:
+        err("No packages installed."); go(); return
+    cookies = read_cookies()
+    if not cookies:
+        err("No cookies found."); go(); return
+    print(W + "Available packages:")
+    for i, pkg in enumerate(pkgs):
+        print(f"  {CY}[{i+1}]{W} {pkg_label(pkg, i)}")
+    print()
+    sel = input(Y + "Enter package numbers to login (e.g. 1 3) or 'all': " + W).strip().lower()
+    to_login = []
+    if sel == "all":
+        to_login = pkgs[:]
+    else:
+        nums = [int(x) for x in sel.split() if x.isdigit()]
+        for n in nums:
+            if 1 <= n <= len(pkgs):
+                to_login.append(pkgs[n-1])
+    if not to_login:
+        info("Nothing selected."); go(); return
+    print()
+    info(f"Logging in {len(to_login)} package(s)…")
+    for i, pkg in enumerate(to_login):
+        if i >= len(cookies): break
+        db = _find_db_silent(pkg)
+        if not db:
+            warn(f"{pkg_label(pkg, pkgs.index(pkg))} — no DB, skipping")
+            continue
+        if _write_cookie(pkg, db, cookies[i]):
+            ok(f"{pkg_label(pkg, pkgs.index(pkg))} — cookie injected")
+        else:
+            err(f"{pkg_label(pkg, pkgs.index(pkg))} — failed")
+    bring_termux_foreground()
+    go()
+
+def manual_cookie_logout():
+    banner(); hdr("Manual Cookie Logout (per package)")
+    pkgs = cfg["packages"]
+    if not pkgs:
+        err("No packages installed."); go(); return
+    print(W + "Available packages:")
+    for i, pkg in enumerate(pkgs):
+        print(f"  {CY}[{i+1}]{W} {pkg_label(pkg, i)}")
+    print()
+    sel = input(Y + "Enter package numbers to logout (e.g. 1 3) or 'all': " + W).strip().lower()
+    to_logout = []
+    if sel == "all":
+        to_logout = pkgs[:]
+    else:
+        nums = [int(x) for x in sel.split() if x.isdigit()]
+        for n in nums:
+            if 1 <= n <= len(pkgs):
+                to_logout.append(pkgs[n-1])
+    if not to_logout:
+        info("Nothing selected."); go(); return
+    print()
+    info(f"Logging out {len(to_logout)} package(s)…")
+    for pkg in to_logout:
+        if cookie_logout(pkg):
+            ok(f"{pkg_label(pkg, pkgs.index(pkg))} — cookie cleared")
+        else:
+            err(f"{pkg_label(pkg, pkgs.index(pkg))} — failed")
+    bring_termux_foreground()
+    go()
+
 def cookie_menu():
     banner(); hdr("Cookie Login / Logout")
-    menu_item("1", "Login (inject cookies into all tabs)")
-    menu_item("2", "Logout (clear .ROBLOSECURITY only — never kills apps)")
+    menu_item("1", "Login All packages")
+    menu_item("2", "Logout All packages")
+    menu_item("3", "Manual Login (choose specific packages)")
+    menu_item("4", "Manual Logout (choose specific packages)")
     menu_item("0", "Back")
     print()
     c = input(CY + " › " + W + "Choice: " + RS).strip()
@@ -639,6 +709,12 @@ def cookie_menu():
         pkgs = cfg["packages"]
         if not pkgs: err("No packages installed."); go(); return
         cookie_logout_all(pkgs)
+    elif c == "3":
+        manual_cookie_login()
+    elif c == "4":
+        manual_cookie_logout()
+    elif c == "0":
+        pass
 
 def _read_clipboard() -> str:
     out = sh("content query --uri content://com.android.clipboard/clip", capture=True, timeout=5)
@@ -840,7 +916,7 @@ def begin_auto_relaunch():
 def aio():
     banner(); hdr("AIO — Full Setup & Auto Relaunch")
     info("Step 1/4: Installing APKs…")
-    install_apks()
+    install_apks(pause=False)   # Auto continue — no Press Enter
     print()
     info("Step 2/4: Cookie Login…")
     cookies = read_cookies()
