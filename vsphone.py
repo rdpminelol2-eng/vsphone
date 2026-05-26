@@ -939,6 +939,7 @@ def begin_auto_relaunch():
     captcha_at = 0.0
     key_at = 0.0
     sort_at = 0.0
+    key_full_check_at = 0.0
     try:
         while True:
             now = time.time()
@@ -959,6 +960,19 @@ def begin_auto_relaunch():
                         state[fg]["key_try"] = 0
                         state[fg]["force_fresh"] = False
                 key_at = now
+            # NEW: Periodic full check for all clones (catches key dialogs in floating/minimized windows)
+            if now - key_full_check_at > 18:
+                for p in pkgs:
+                    if state[p]["status"] == "LIVE":
+                        sh(f"am start {p}", silent=True)
+                        time.sleep(1.2)
+                        if has_key_dialog():
+                            if state[p]["status"] != "KEY":
+                                state[p]["status"] = "KEY"
+                                state[p]["key_try"] = 0
+                                state[p]["force_fresh"] = False
+                                info(f"Detected key dialog on {state[p]['label']} (background check)")
+                key_full_check_at = now
             if cfg.get("auto_sort_tabs", True) and now - sort_at > 45:
                 auto_sort_tabs()
                 sort_at = now
