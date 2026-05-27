@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """
-Delta Key System v2.2 - FIXED API ENDPOINT
-API was returning 404 because the old endpoint was wrong.
-Now tries multiple common endpoints + lets you easily set the correct one.
+Delta Key System v3.0 - PURE DISCORD ONLY (API REMOVED)
+- Completely removed all BypassTools API code (it was broken)
+- Uses ONLY your Discord self-bot
+- Auto-deletes the bypass bot's reply message after extracting the key (keeps channel clean)
 
-Your key is still pre-loaded.
+Pre-loaded:
+- Token: MTUwOTExODI3NTM5OTg0ODEwOQ.GflKox.2mDdJCwsdouK2VJ8ucXc_bokH21bvr13o0aq40
+- Channel: 1509123025381888020
+
+ONE-LINE INSTALL:
+pkg update -y && pkg install -y python python-pip termux-api openssl openssl-tool && pip install pyyaml colorama requests
 """
 
 import os, sys, time, subprocess, re, threading, signal, json
@@ -14,29 +20,23 @@ try:
     from colorama import Fore, Style, init
     init(autoreset=True)
 except ImportError:
-    print("Run: pkg update -y && pkg install -y python python-pip termux-api openssl openssl-tool && pip install pyyaml colorama requests")
+    print("Run the one-line install above")
     sys.exit(1)
 
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "2.2-FIXED-API"
+VERSION = "3.0-PURE-DISCORD"
 CREATOR = "IWZVC + Grok"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
 KEY_PREFIX = "FREE_"
 KEY_TTL = 86400
 DISCORD_API = "https://discord.com/api/v10"
 
-DEFAULT_BYPASS_API_KEY = "bt_0eb78af6ba780ffb369f07f051a65e574ee64888b58be50b"
-
-# Multiple possible endpoints (script will try them all)
-DEFAULT_ENDPOINTS = [
-    "https://bypass.tools/api/bypass",
-    "https://api.bypass.tools/v1/bypass",
-    "https://bypass.tools/api/v1/bypass",
-    "https://api.bypass.tools/bypass"
-]
+# Pre-loaded values
+DEFAULT_DISCORD_TOKEN = "MTUwOTExODI3NTM5OTg0ODEwOQ.GflKox.2mDdJCwsdouK2VJ8ucXc_bokH21bvr13o0aq40"
+DEFAULT_CHANNEL_ID = "1509123025381888020"
 
 KEY_PATTERN = re.compile(r"FREE_[A-Za-z0-9_\-]{10,}")
 KW_KEY_INPUT = ["key_example", "KEY_Example", "enter key", "key example", "paste key", "your key", "key input"]
@@ -56,13 +56,11 @@ class Config:
         "delta_key": "",
         "delta_key_time": 0,
         "check_interval": 300,
-        "bypass_api_key": DEFAULT_BYPASS_API_KEY,
-        "bypass_api_endpoints": DEFAULT_ENDPOINTS,
-        "discord_token": "",
-        "discord_channel_id": "",
-        "bypass_bot_user_id": "",
+        "discord_token": DEFAULT_DISCORD_TOKEN,
+        "discord_channel_id": DEFAULT_CHANNEL_ID,
+        "bypass_bot_user_id": "",          # Optional: only accept from this bot
+        "auto_delete_bot_messages": True,  # Delete bypass bot reply after getting key
         "auto_enter_on_grab": True,
-        "prefer_api": True,
     }
     def __init__(self):
         self.data = dict(self._defaults)
@@ -102,7 +100,7 @@ def banner():
     print()
     print(CY + "╔" + "═"*W_ + "╗")
     print(CY + "║" + M + BR + f"{' DELTA KEY SYSTEM v' + VERSION:^{W_}}" + RS + CY + "║")
-    print(CY + "║" + DIM + W + f"{' MULTI-ENDPOINT API + DISCORD':^{W_}}" + RS + CY + "║")
+    print(CY + "║" + DIM + W + f"{' PURE DISCORD + AUTO DELETE':^{W_}}" + RS + CY + "║")
     print(CY + "╠" + "═"*W_ + "╣")
     key = cfg.get("delta_key", "")
     if key and key.startswith(KEY_PREFIX):
@@ -110,12 +108,12 @@ def banner():
         rem = max(0, KEY_TTL - age)
         status = G + BR + f"OK — {int(rem/3600)}h {int((rem%3600)/60)}m left" + RS
     else:
-        status = R + "NONE — set link" + RS
-    link_short = (cfg.get("delta_key_link", "")[:38] + "...") if cfg.get("delta_key_link") else DIM + "not set" + RS
-    api_status = G+BR+"API READY" if cfg.get("bypass_api_key") else R+"NO API KEY"
+        status = R + "NONE" + RS
+    link_short = (cfg.get("delta_key_link", "")[:40] + "...") if cfg.get("delta_key_link") else DIM + "not set" + RS
+    chan = cfg.get("discord_channel_id", "")[:12] + "..." if cfg.get("discord_channel_id") else DIM + "not set" + RS
     print(CY + "║" + f" Key Status : {status}".ljust(W_+20) + CY + "║")
     print(CY + "║" + f" Link       : {CY}{link_short}".ljust(W_+20) + CY + "║")
-    print(CY + "║" + f" Bypass API : {api_status}".ljust(W_+20) + CY + "║")
+    print(CY + "║" + f" Channel    : {CY}{chan}".ljust(W_+20) + CY + "║")
     print(CY + "║" + f" Packages   : {BR+CY}{len(cfg.get('packages', []))}{RS+DIM+W} ready".ljust(W_+20) + CY + "║")
     print(CY + "╚" + "═"*W_ + "╝")
     print()
@@ -246,100 +244,122 @@ def tap_element(terms, xml=None) -> bool:
 
 from xml.etree import ElementTree as ET
 
-def bypass_via_api(link: str) -> str:
-    api_key = cfg.get("bypass_api_key", "").strip()
-    endpoints = cfg.get("bypass_api_endpoints", DEFAULT_ENDPOINTS)
-    
-    if not api_key:
-        return ""
-
-    headers = {"Content-Type": "application/json"}
-    payload = {"url": link, "key": api_key}
-
-    for endpoint in endpoints:
-        try:
-            info(f"Trying endpoint: {endpoint}")
-            r = requests.post(endpoint, json=payload, headers=headers, timeout=30)
-            if r.status_code == 200:
-                data = r.json()
-                key = (data.get("key") or data.get("result") or 
-                       data.get("bypassed_url") or data.get("data", {}).get("key") or "")
-                if isinstance(key, str) and key.startswith(KEY_PREFIX):
-                    ok(f"✅ Key from {endpoint}: {key[:18]}…")
-                    return key
-                for v in data.values():
-                    if isinstance(v, str) and v.startswith(KEY_PREFIX):
-                        return v
-            else:
-                warn(f"{endpoint} → {r.status_code}")
-        except Exception as e:
-            warn(f"{endpoint} error: {str(e)[:50]}")
-    return ""
-
-def post_link_to_discord(link: str) -> bool:
+# ─────────────────────────────────────────────────────────────────────────────
+# PURE DISCORD (with auto-delete)
+# ─────────────────────────────────────────────────────────────────────────────
+def post_link_to_discord(link: str) -> str:
+    """Posts the link and returns the message ID of what we posted"""
     token = cfg.get("discord_token", "").strip()
     channel_id = cfg.get("discord_channel_id", "").strip()
     if not token or not channel_id:
-        return False
-    headers = {"Authorization": token, "Content-Type": "application/json"}
-    payload = {"content": f"/bypass {link}\n\n@here NEW DELTA KEY LINK"}
+        err("Discord token or channel not set!")
+        return ""
+    headers = {
+        "Authorization": token,
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0"
+    }
+    payload = {"content": f"/bypass {link}\n\n@here NEW DELTA KEY LINK — bypass pls"}
+    url = f"{DISCORD_API}/channels/{channel_id}/messages"
     try:
-        r = requests.post(f"{DISCORD_API}/channels/{channel_id}/messages", headers=headers, json=payload, timeout=15)
-        return r.status_code == 200
-    except:
-        return False
+        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        if r.status_code == 200:
+            msg_id = r.json().get("id", "")
+            ok(f"Link posted (msg ID: {msg_id})")
+            return msg_id
+        else:
+            err(f"Post failed: {r.status_code} {r.text[:80]}")
+            return ""
+    except Exception as e:
+        err(f"Post error: {e}")
+        return ""
 
-def poll_discord_for_key(timeout: int = 120, poll_interval: float = 2.5) -> str:
+def poll_discord_for_key(timeout: int = 120, poll_interval: float = 2.0) -> tuple:
+    """Polls for key + returns (key, message_id_of_bot_reply)"""
     token = cfg.get("discord_token", "").strip()
     channel_id = cfg.get("discord_channel_id", "").strip()
     bypass_bot_id = cfg.get("bypass_bot_user_id", "").strip()
+
     if not token or not channel_id:
-        return ""
-    headers = {"Authorization": token}
-    url = f"{DISCORD_API}/channels/{channel_id}/messages?limit=25"
+        return "", ""
+
+    headers = {"Authorization": token, "User-Agent": "Mozilla/5.0"}
+    url = f"{DISCORD_API}/channels/{channel_id}/messages?limit=30"
     deadline = time.time() + timeout
     seen_ids = set()
+
+    info("Polling Discord for bypass reply...")
     while time.time() < deadline:
         try:
             r = requests.get(url, headers=headers, timeout=10)
-            if r.status_code != 200: 
+            if r.status_code != 200:
                 time.sleep(poll_interval)
                 continue
             for msg in r.json():
-                if msg.get("id") in seen_ids: continue
-                seen_ids.add(msg.get("id"))
+                msg_id = msg.get("id")
+                if msg_id in seen_ids:
+                    continue
+                seen_ids.add(msg_id)
+
                 content = msg.get("content", "") + " " + json.dumps(msg.get("embeds", []))
                 m = KEY_PATTERN.search(content)
                 if m:
                     key = m.group(0)
-                    if bypass_bot_id and str(msg.get("author", {}).get("id")) != bypass_bot_id:
+                    author_id = str(msg.get("author", {}).get("id", ""))
+                    if bypass_bot_id and author_id != bypass_bot_id:
                         continue
-                    return key
-        except:
-            pass
+                    info(f"Key found from {msg.get('author', {}).get('username', 'bot')}")
+                    return key, msg_id
+        except Exception as e:
+            warn(f"Poll error: {e}")
         time.sleep(poll_interval)
-    return ""
+    return "", ""
 
-def get_key_from_link() -> str:
+def delete_discord_message(message_id: str) -> bool:
+    """Deletes a message (used to clean up bypass bot reply)"""
+    if not message_id:
+        return False
+    token = cfg.get("discord_token", "").strip()
+    channel_id = cfg.get("discord_channel_id", "").strip()
+    if not token or not channel_id:
+        return False
+    headers = {"Authorization": token, "User-Agent": "Mozilla/5.0"}
+    url = f"{DISCORD_API}/channels/{channel_id}/messages/{message_id}"
+    try:
+        r = requests.delete(url, headers=headers, timeout=10)
+        if r.status_code in (200, 204):
+            info("Bypass bot message deleted (channel clean)")
+            return True
+        else:
+            warn(f"Delete failed: {r.status_code}")
+            return False
+    except Exception as e:
+        warn(f"Delete error: {e}")
+        return False
+
+def get_key_from_discord() -> str:
     link = cfg.get("delta_key_link", "").strip()
     if not link:
         err("No Delta Key Link set!")
         return ""
 
-    if cfg.get("prefer_api", True):
-        key = bypass_via_api(link)
-        if key.startswith(KEY_PREFIX):
-            return key
-        warn("All API endpoints failed — trying Discord...")
+    posted_msg_id = post_link_to_discord(link)
+    if not posted_msg_id:
+        return ""
 
-    if cfg.get("discord_token") and cfg.get("discord_channel_id"):
-        if post_link_to_discord(link):
-            time.sleep(5)
-            key = poll_discord_for_key()
-            if key.startswith(KEY_PREFIX):
-                return key
+    time.sleep(4)  # wait for bypass bot to reply
+    key, bot_msg_id = poll_discord_for_key()
+
+    if key.startswith(KEY_PREFIX):
+        # Auto-delete the bypass bot's message if enabled
+        if cfg.get("auto_delete_bot_messages", True) and bot_msg_id:
+            delete_discord_message(bot_msg_id)
+        return key
     return ""
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Core logic
+# ─────────────────────────────────────────────────────────────────────────────
 def _key_is_valid() -> bool:
     key = cfg.get("delta_key", "").strip()
     age = time.time() - cfg.get("delta_key_time", 0)
@@ -357,17 +377,17 @@ def _clear_key():
     cfg.save()
 
 def force_grab_and_enter():
-    banner(); section("Force Grab + Enter")
+    banner(); section("Force Grab + Enter (Discord)")
     if not cfg.get("delta_key_link"):
         err("Set Delta Key Link first!")
         go(); return
-    key = get_key_from_link()
+    key = get_key_from_discord()
     if key.startswith(KEY_PREFIX):
         _save_key(key)
         if cfg.get("auto_enter_on_grab", True):
             enter_key_into_all_packages(key)
     else:
-        warn("No key from API or Discord.")
+        warn("No key from Discord.")
         manual = input(Y + "Paste FREE_ key manually: " + W).strip()
         if manual.startswith(KEY_PREFIX):
             _save_key(manual)
@@ -375,13 +395,13 @@ def force_grab_and_enter():
     go()
 
 def start_monitor():
-    banner(); section("Background Monitor Started")
+    banner(); section("Background Monitor Started (Discord + Auto-Delete)")
     def monitor():
         while True:
             try:
                 if cfg.get("delta_key_link") and not _key_is_valid():
-                    info("Key expired — fetching new one...")
-                    key = get_key_from_link()
+                    info("Key expired — posting to Discord...")
+                    key = get_key_from_discord()
                     if key.startswith(KEY_PREFIX):
                         _save_key(key)
                         if cfg.get("auto_enter_on_grab", True):
@@ -398,24 +418,22 @@ def start_monitor():
 
 def settings_menu():
     while True:
-        banner(); section("Settings")
+        banner(); section("Settings (Discord Only)")
         link = (cfg.get("delta_key_link", "")[:40] + "...") if cfg.get("delta_key_link") else DIM + "(not set)" + RS
-        api_key = G+BR+"LOADED" if cfg.get("bypass_api_key") else R+"NOT SET"
-        endpoints = ", ".join(cfg.get("bypass_api_endpoints", [])[:2]) + "..." if cfg.get("bypass_api_endpoints") else DIM + "(default)" + RS
-        discord = G+BR+"SET" if cfg.get("discord_token") and cfg.get("discord_channel_id") else DIM + "not set" + RS
+        token_set = G+BR+"LOADED" if cfg.get("discord_token") else R+"NOT SET"
+        chan = cfg.get("discord_channel_id", "")[:12] + "..." if cfg.get("discord_channel_id") else DIM + "not set" + RS
+        auto_del = G+BR+"ON" if cfg.get("auto_delete_bot_messages", True) else R+BR+"OFF"
         interval = cfg.get("check_interval")
         auto = G+BR+"ON" if cfg.get("auto_enter_on_grab", True) else R+BR+"OFF"
-        prefer = G+BR+"API FIRST" if cfg.get("prefer_api", True) else Y+"DISCORD ONLY"
 
         print(W + f" {CY}[1]{W} Delta Key Link         {DIM}→ {CY}{link}")
-        print(W + f" {CY}[2]{W} BypassTools API Key    {DIM}→ {api_key}{RS}")
-        print(W + f" {CY}[3]{W} API Endpoints (list)   {DIM}→ {endpoints}")
-        print(W + f" {CY}[4]{W} Discord (fallback)     {DIM}→ {discord}")
-        print(W + f" {CY}[5]{W} Prefer API             {DIM}→ {prefer}{RS}")
-        print(W + f" {CY}[6]{W} Check Interval         {DIM}→ {Y}{interval}s")
-        print(W + f" {CY}[7]{W} Auto-Enter             {DIM}→ {auto}{RS}")
-        print(W + f" {CY}[8]{W} Clear Key")
-        print(W + f" {CY}[9]{W} Detect Packages")
+        print(W + f" {CY}[2]{W} Discord Token          {DIM}→ {token_set}{RS}")
+        print(W + f" {CY}[3]{W} Discord Channel ID     {DIM}→ {chan}")
+        print(W + f" {CY}[4]{W} Auto-Delete Bot Msgs   {DIM}→ {auto_del}{RS}")
+        print(W + f" {CY}[5]{W} Check Interval         {DIM}→ {Y}{interval}s")
+        print(W + f" {CY}[6]{W} Auto-Enter on Grab     {DIM}→ {auto}{RS}")
+        print(W + f" {CY}[7]{W} Clear Current Key")
+        print(W + f" {CY}[8]{W} Detect Packages Now")
         print(W + f" {CY}[0]{W} Back"); print()
         c = input(CY + " › " + W + "Choice: " + RS).strip()
 
@@ -425,39 +443,30 @@ def settings_menu():
                 cfg["delta_key_link"] = new_link
                 ok("Saved.")
         elif c == "2":
-            new_key = input(Y + "Paste bt_... key: " + W).strip()
-            if new_key.startswith("bt_"):
-                cfg["bypass_api_key"] = new_key
-                ok("Key updated.")
+            new_token = input(Y + "Paste Discord token: " + W).strip()
+            if new_token:
+                cfg["discord_token"] = new_token
+                ok("Token updated.")
         elif c == "3":
-            print("Current endpoints:")
-            for e in cfg.get("bypass_api_endpoints", []):
-                print("  -", e)
-            print("\nPaste new endpoint to ADD:")
-            new_ep = input(Y + "New endpoint: " + W).strip()
-            if new_ep.startswith("http"):
-                eps = cfg.get("bypass_api_endpoints", [])
-                if new_ep not in eps:
-                    eps.append(new_ep)
-                    cfg["bypass_api_endpoints"] = eps
-                    ok("Endpoint added!")
+            new_chan = input(Y + "Channel ID: " + W).strip()
+            if new_chan.isdigit():
+                cfg["discord_channel_id"] = new_chan
+                ok("Channel updated.")
         elif c == "4":
-            print("Set Discord token + channel ID")
-        elif c == "5":
-            cfg["prefer_api"] = not cfg.get("prefer_api", True)
+            cfg["auto_delete_bot_messages"] = not cfg.get("auto_delete_bot_messages", True)
             ok("Toggled.")
-        elif c == "6":
-            v = input(Y + "Seconds: " + W).strip()
+        elif c == "5":
+            v = input(Y + "Seconds (60-3600): " + W).strip()
             if v.isdigit() and 60 <= int(v) <= 3600:
                 cfg["check_interval"] = int(v)
                 ok("Saved.")
-        elif c == "7":
+        elif c == "6":
             cfg["auto_enter_on_grab"] = not cfg.get("auto_enter_on_grab", True)
             ok("Toggled.")
-        elif c == "8":
+        elif c == "7":
             _clear_key()
             ok("Key cleared.")
-        elif c == "9":
+        elif c == "8":
             detect_packages(force=True)
             ok(f"Found {len(cfg['packages'])} packages.")
         elif c == "0":
@@ -469,13 +478,13 @@ def main():
     while True:
         banner()
         print(CY + " ┌─────────────────────────────────────────────┐")
-        print(CY + " │ " + Y + BR + " DELTA KEY SYSTEM v2.2 — MULTI API" + " " * 8 + RS + CY + "│")
+        print(CY + " │ " + Y + BR + " DELTA KEY SYSTEM v3.0 — PURE DISCORD" + " " * 5 + RS + CY + "│")
         print(CY + " ├─────────────────────────────────────────────┤")
-        menu_item("1", "Set Link + Options", "")
-        menu_item("2", "Force Grab + Enter", "tries all API endpoints")
-        menu_item("3", "Enter Current Key", "")
-        menu_item("4", "Start Monitor", "")
-        menu_item("5", "Settings", "add new API endpoints here")
+        menu_item("1", "Set Delta Key Link", "")
+        menu_item("2", "Force Grab + Enter", "Discord + auto-delete")
+        menu_item("3", "Enter Current Key to All", "")
+        menu_item("4", "Start Background Monitor", "auto every 5min")
+        menu_item("5", "Settings", "token, channel, auto-delete")
         menu_item("0", "Exit", "")
         print(CY + " └─────────────────────────────────────────────┘")
         print()
@@ -492,7 +501,9 @@ def main():
         elif c == "5":
             settings_menu()
         elif c == "0":
-            print(); print(M + BR + " Goodbye!" + RS); print(); break
+            print(); print(M + BR + " Goodbye! Pure Discord mode active." + RS)
+            print()
+            break
 
 if __name__ == "__main__":
     main()
