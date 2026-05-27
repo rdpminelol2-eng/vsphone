@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-Delta Key System v6.2 - FINAL (Fixed Slash Command)
+Delta Key System v6.4 - FINAL (Hybrid: discord.py-self + Discum)
 """
 
-import os, re, yaml
+import os, re, yaml, asyncio
+import discord
 import discum
-from discum.utils.slash import SlashCommander
 
-TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
+USER_TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
-GUILD_ID = 1424475459441262807
-CHANNEL_ID = 1509123025381888020
+GUILD_ID = "1424475459441262807"
+CHANNEL_ID = "1509123025381888020"
 
 def get_token():
-    if os.path.exists(TOKEN_FILE):
-        return open(TOKEN_FILE).read().strip()
+    if os.path.exists(USER_TOKEN_FILE):
+        return open(USER_TOKEN_FILE).read().strip()
     return ""
 
 def load_cfg():
@@ -24,6 +24,31 @@ def load_cfg():
 
 def save_cfg(data):
     yaml.dump(data, open(CFG_FILE, "w"))
+
+async def send_slash_command(link: str):
+    """Send slash command using discord.py-self"""
+    token = get_token()
+    if not token:
+        return False
+    
+    client = discord.Client()
+    
+    @client.event
+    async def on_ready():
+        guild = client.get_guild(int(GUILD_ID))
+        channel = guild.get_channel(int(CHANNEL_ID))
+        
+        commands = await guild.application_commands()
+        bypass_cmd = next((c for c in commands if c.name == "bypass"), None)
+        
+        if bypass_cmd:
+            await bypass_cmd(channel, url=link)
+            print("[DEBUG] Slash command sent with discord.py-self")
+        
+        await client.close()
+    
+    await client.start(token)
+    return True
 
 def send_real_bypass(link: str) -> str:
     token = get_token()
@@ -35,29 +60,14 @@ def send_real_bypass(link: str) -> str:
     
     key_found = None
     
-    bot = discum.Client(token=token, log=False)
+    # Step 1: Send slash command with discord.py-self
+    print("[DEBUG] Sending slash command...")
+    asyncio.run(send_slash_command(link))
     
-    @bot.gateway.command
-    def on_ready(resp):
-        if resp.event.ready:
-            print("[DEBUG] Connected to Discord!")
-            
-            # Get slash commands
-            cmds = bot.getSlashCommands(str(GUILD_ID)).json()
-            print(f"[DEBUG] Commands JSON: {cmds}")
-            
-            slash = SlashCommander(cmds["application_commands"])
-            
-            print("[DEBUG] Sending slash command...")
-            
-            bot.triggerSlashCommand(
-                slash.get("bypass"),
-                channelID=str(CHANNEL_ID),
-                guildID=str(GUILD_ID),
-                data=[link]
-            )
-            
-            print("[DEBUG] Slash command sent!")
+    # Step 2: Listen with Discum for raw payload
+    print("[DEBUG] Listening for key with Discum...")
+    
+    bot = discum.Client(token=token, log=False)
     
     @bot.gateway.command
     def on_message(resp):
@@ -66,36 +76,16 @@ def send_real_bypass(link: str) -> str:
         if resp.event.message or resp.event.message_updated:
             msg = resp.parsed.auto()
             
-            print(msg)
-            
-            if msg.get("channel_id") != str(CHANNEL_ID):
+            if msg.get("channel_id") != CHANNEL_ID:
                 return
             
-            full_text = msg.get("content", "")
-            
-            for embed in msg.get("embeds", []):
-                if embed.get("title"):
-                    full_text += " " + embed["title"]
-                if embed.get("description"):
-                    full_text += " " + embed["description"]
-                for field in embed.get("fields", []):
-                    full_text += f" {field.get('name','')}"
-                    full_text += f" {field.get('value','')}"
-            
-            print(f"[DEBUG] FULL: {full_text}")
+            full_text = str(resp.raw)  # RAW PAYLOAD
             
             m = re.search(r"FREE_[A-Za-z0-9]+", full_text)
             
             if m:
                 key_found = m.group(0)
                 print(f"[DEBUG] ✅ KEY FOUND: {key_found}")
-                
-                try:
-                    bot.deleteMessage(str(CHANNEL_ID), msg.get("id"))
-                    print("[DEBUG] Message deleted")
-                except:
-                    pass
-                
                 bot.gateway.close()
     
     bot.gateway.run(auto_reconnect=True)
@@ -110,7 +100,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.2 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.4 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
