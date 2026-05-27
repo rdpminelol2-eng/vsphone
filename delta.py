@@ -262,7 +262,7 @@ def post_link_to_discord(link: str, token: str, channel_id: str) -> str:
         "User-Agent": "Mozilla/5.0"
     }
     # Exact format that works (from your screenshot)
-    payload = {"content": f"/bypass url: {link}"}
+    payload = {"content": f"/bypass url:{link}"}
     url = f"{DISCORD_API}/channels/{channel_id}/messages"
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
