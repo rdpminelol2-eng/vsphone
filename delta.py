@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.6 - FINAL
-- Real slash command
-- Full message + embed key detection
-- Auto-delete bypass bot message
+Delta Key System v4.7 - FINAL (With Debug + Polling)
 """
 
-import os, asyncio, re, yaml
+import os, asyncio, re, yaml, time
 import discord
 
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
@@ -32,11 +29,10 @@ async def send_real_bypass(link: str) -> str:
     if not token: return ""
     client = discord.Client()
     key_found = None
-    bot_msg_id = None
 
     @client.event
     async def on_ready():
-        nonlocal key_found, bot_msg_id
+        nonlocal key_found
         guild = client.get_guild(GUILD_ID)
         channel = guild.get_channel(CHANNEL_ID)
         
@@ -45,23 +41,27 @@ async def send_real_bypass(link: str) -> str:
         
         if bypass_cmd:
             await bypass_cmd(channel, url=link)
-            await asyncio.sleep(8)
+            print("\033[96m[DEBUG] Command sent, waiting for key...\033[0m")
             
-            async for msg in channel.history(limit=10):
-                full_text = msg.content + " " + str(msg.embeds)
-                m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
-                if m:
-                    key_found = m.group(0)
-                    bot_msg_id = msg.id
+            # Poll for 15 seconds
+            for i in range(15):
+                await asyncio.sleep(1)
+                async for msg in channel.history(limit=5):
+                    full_text = msg.content + " " + str(msg.embeds)
+                    m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
+                    if m:
+                        key_found = m.group(0)
+                        print(f"\033[92m[DEBUG] Key found: {key_found}\033[0m")
+                        # Auto delete
+                        try:
+                            await msg.delete()
+                        except:
+                            pass
+                        break
+                if key_found:
                     break
-        
-        # Auto-delete bypass bot message
-        if bot_msg_id:
-            try:
-                msg_to_delete = await channel.fetch_message(bot_msg_id)
-                await msg_to_delete.delete()
-            except:
-                pass
+                if i % 3 == 0:
+                    print(f"\033[96m[DEBUG] Still waiting... ({i}s)\033[0m")
         
         await client.close()
 
@@ -76,7 +76,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.6 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.7 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
