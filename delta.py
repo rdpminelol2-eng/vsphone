@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-Delta Key System v6.6 - FINAL
+Delta Key System - FINAL (No Intents)
 """
 
 import os, re, yaml, asyncio
 import discord
 import discum
 
-USER_TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
+TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
 GUILD_ID = "1424475459441262807"
 CHANNEL_ID = "1509123025381888020"
 
 def get_token():
-    if os.path.exists(USER_TOKEN_FILE):
-        return open(USER_TOKEN_FILE).read().strip()
+    if os.path.exists(TOKEN_FILE):
+        return open(TOKEN_FILE).read().strip()
     return ""
 
 def load_cfg():
@@ -30,8 +30,7 @@ async def send_slash_command(link: str):
     if not token:
         return False
     
-    intents = discord.Intents.default()
-    client = discord.Client(intents=intents)
+    client = discord.Client()
     
     @client.event
     async def on_ready():
@@ -98,7 +97,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.6 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
