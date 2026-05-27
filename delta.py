@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.7 - FINAL (With Debug + Polling)
+Delta Key System v4.8 - FINAL (Search "Bypass" + Delete)
 """
 
-import os, asyncio, re, yaml, time
+import os, asyncio, re, yaml
 import discord
 
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
@@ -41,27 +41,23 @@ async def send_real_bypass(link: str) -> str:
         
         if bypass_cmd:
             await bypass_cmd(channel, url=link)
-            print("\033[96m[DEBUG] Command sent, waiting for key...\033[0m")
+            await asyncio.sleep(10)
             
-            # Poll for 15 seconds
-            for i in range(15):
-                await asyncio.sleep(1)
-                async for msg in channel.history(limit=5):
+            # Get last 3 messages and find the one with "Bypass"
+            messages = [msg async for msg in channel.history(limit=3)]
+            
+            for msg in messages:
+                if "bypass" in msg.content.lower() or any("bypass" in str(e).lower() for e in msg.embeds):
                     full_text = msg.content + " " + str(msg.embeds)
                     m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
                     if m:
                         key_found = m.group(0)
-                        print(f"\033[92m[DEBUG] Key found: {key_found}\033[0m")
-                        # Auto delete
+                        # Delete the message
                         try:
                             await msg.delete()
                         except:
                             pass
                         break
-                if key_found:
-                    break
-                if i % 3 == 0:
-                    print(f"\033[96m[DEBUG] Still waiting... ({i}s)\033[0m")
         
         await client.close()
 
@@ -76,7 +72,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.7 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.8 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
