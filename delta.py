@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Delta Key System - FINAL (Your v4.4 + Discum)
+Delta Key System - FINAL (Simple & Reliable)
 """
 
 import os, asyncio, re, yaml
 import discord
-import discum
 
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
 GUILD_ID = 1424475459441262807
 CHANNEL_ID = 1509123025381888020
+KEY_PATTERN = re.compile(r"FREE_[A-Za-z0-9_-]+")
 
 def get_token():
     if os.path.exists(TOKEN_FILE):
@@ -36,17 +36,28 @@ async def send_real_bypass(link: str) -> str:
     async def on_ready():
         nonlocal key_found
         guild = client.get_guild(GUILD_ID)
-        channel = guild.get_channel(CHANNEL_ID)
+        channel = await client.fetch_channel(CHANNEL_ID)
+        
         commands = await guild.application_commands()
         bypass_cmd = next((c for c in commands if c.name == "bypass"), None)
+        
         if bypass_cmd:
             await bypass_cmd(channel, url=link)
-            await asyncio.sleep(6)
-            async for msg in channel.history(limit=8):
-                m = re.search(r"FREE_[A-Za-z0-9_-]{10,}", msg.content)
-                if m:
-                    key_found = m.group(0)
-                    break
+            
+            # Poll for key
+            for _ in range(15):
+                async for msg in channel.history(limit=20):
+                    m = KEY_PATTERN.search(msg.content or "")
+                    if m:
+                        key_found = m.group(0)
+                        try:
+                            await msg.delete()
+                        except:
+                            pass
+                        await client.close()
+                        return
+                await asyncio.sleep(1)
+        
         await client.close()
     
     await client.start(token)
@@ -60,19 +71,19 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m DELTA KEY SYSTEM - FINAL \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
-       
+        
         link = cfg.get("delta_key_link", "")
         status = "\033[92m(link saved)\033[0m" if link else ""
-       
+        
         print(f"\n\033[96m[1]\033[97m Force Grab + Enter (Real Slash) {status}")
         print("\033[96m[2]\033[97m Enter Key to All Packages")
         print("\033[96m[3]\033[97m Set Delta Key Link")
         print("\033[96m[4]\033[97m Exit\n")
-       
+        
         c = input("\033[96m › \033[97m").strip()
-       
+        
         if c == "1":
             if not link:
                 print("\033[93mNo link saved. Use option 3 first.\033[0m")
@@ -85,11 +96,11 @@ def main():
             else:
                 print("\033[91m ✘ No key received\033[0m")
             input()
-       
+        
         elif c == "2":
             print("Key entering coming soon...")
             input()
-       
+        
         elif c == "3":
             new_link = input("\033[93mPaste Delta Key Link: \033[97m").strip()
             if new_link.startswith("http"):
@@ -97,7 +108,7 @@ def main():
                 save_cfg(cfg)
                 print("\033[92m ✔ Link saved permanently!\033[0m")
                 input()
-       
+        
         elif c == "4":
             break
 
