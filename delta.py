@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.17 - FINAL
+Delta Key System v4.18 - FINAL (on_message + on_message_edit)
 """
 
 import os, asyncio, re, yaml
@@ -36,6 +36,42 @@ async def send_real_bypass(link: str) -> str:
     
     client = discord.Client()
     
+    async def process_message(msg):
+        nonlocal key_found
+        
+        if msg.channel.id != CHANNEL_ID:
+            return
+        
+        full_text = msg.content or ""
+        
+        print(f"[DEBUG] EMBEDS RAW: {msg.embeds}")
+        print(f"[DEBUG] CONTENT: {msg.content}")
+        
+        for embed in msg.embeds:
+            try:
+                if embed.title: full_text += f" {embed.title}"
+                if embed.description: full_text += f" {embed.description}"
+                for field in embed.fields:
+                    full_text += f" {field.name} {field.value}"
+            except Exception as e:
+                print(f"[DEBUG] Embed parse error: {e}")
+        
+        print(f"[DEBUG] FULL TEXT: {full_text}")
+        
+        m = re.search(r"FREE_[a-zA-Z0-9]+", full_text)
+        
+        if m:
+            key_found = m.group(0)
+            print(f"[DEBUG] ✅ KEY FOUND: {key_found}")
+            
+            try:
+                await msg.delete()
+                print("[DEBUG] Message deleted")
+            except Exception as e:
+                print(f"[DEBUG] Delete failed: {e}")
+            
+            await client.close()
+    
     @client.event
     async def on_ready():
         guild = client.get_guild(GUILD_ID)
@@ -57,40 +93,16 @@ async def send_real_bypass(link: str) -> str:
             return
         
         await bypass_cmd(channel, url=link)
-        print("[DEBUG] Slash command sent! Waiting for response...")
+        print("[DEBUG] Slash command sent!")
     
     @client.event
     async def on_message(msg):
-        nonlocal key_found
-        
-        if msg.channel.id != CHANNEL_ID:
-            return
-        
-        full_text = msg.content
-        
-        print(f"[DEBUG] Embeds: {msg.embeds}")
-        
-        for embed in msg.embeds:
-            if embed.title: full_text += f" {embed.title}"
-            if embed.description: full_text += f" {embed.description}"
-            for field in embed.fields:
-                full_text += f" {field.name} {field.value}"
-        
-        print(f"[DEBUG] RAW: {full_text[:150]}...")
-        
-        m = re.search(r"FREE_[a-zA-Z0-9]+", full_text)
-        
-        if m:
-            key_found = m.group(0)
-            print(f"[DEBUG] ✅ KEY FOUND: {key_found}")
-            
-            try:
-                await msg.delete()
-                print("[DEBUG] Message deleted")
-            except Exception as e:
-                print(f"[DEBUG] Delete failed: {e}")
-            
-            await client.close()
+        await process_message(msg)
+    
+    @client.event
+    async def on_message_edit(before, after):
+        print("[DEBUG] MESSAGE EDIT DETECTED")
+        await process_message(after)
     
     await client.start(token)
     
@@ -107,7 +119,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.17 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.18 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
