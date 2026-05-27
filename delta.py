@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.18 - FINAL (on_message + on_message_edit)
+Delta Key System v4.20 - FINAL (Fetch Message Fix)
 """
 
 import os, asyncio, re, yaml
@@ -42,23 +42,34 @@ async def send_real_bypass(link: str) -> str:
         if msg.channel.id != CHANNEL_ID:
             return
         
+        try:
+            # REFETCH FULL MESSAGE FROM API
+            msg = await msg.channel.fetch_message(msg.id)
+            print("[DEBUG] Message refetched from API")
+        except Exception as e:
+            print(f"[DEBUG] Fetch failed: {e}")
+            return
+        
         full_text = msg.content or ""
         
-        print(f"[DEBUG] EMBEDS RAW: {msg.embeds}")
-        print(f"[DEBUG] CONTENT: {msg.content}")
+        print(f"[DEBUG] REFETCHED EMBEDS: {msg.embeds}")
         
         for embed in msg.embeds:
             try:
+                embed_dict = embed.to_dict()
+                print(f"[DEBUG] EMBED DICT: {embed_dict}")
+                
                 if embed.title: full_text += f" {embed.title}"
                 if embed.description: full_text += f" {embed.description}"
-                for field in embed.fields:
-                    full_text += f" {field.name} {field.value}"
+                
+                for field in embed_dict.get("fields", []):
+                    full_text += f" {field.get('name','')} {field.get('value','')}"
             except Exception as e:
                 print(f"[DEBUG] Embed parse error: {e}")
         
-        print(f"[DEBUG] FULL TEXT: {full_text}")
+        print(f"[DEBUG] FINAL TEXT: {full_text}")
         
-        m = re.search(r"FREE_[a-zA-Z0-9]+", full_text)
+        m = re.search(r"FREE_[A-Za-z0-9]+", full_text)
         
         if m:
             key_found = m.group(0)
@@ -119,7 +130,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.18 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.20 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
