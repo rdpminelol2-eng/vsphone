@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Delta Key System v3.1 - PURE DISCORD (HARDCODED)
-- Token and Channel are HARDCODED (no longer in settings)
-- API completely removed
-- Auto-deletes bypass bot message after getting key
+Delta Key System v3.3 - CLEAN (NO TOKEN IN CODE)
+- Zero tokens or sensitive data in this file
+- Loads token from token.txt (create it once)
+- Auto-deletes bypass bot messages
+- Safe to push to GitHub
 
-Your values are locked in:
-- Token: MTUwOTExODI3NTM5OTg0ODEwOQ.GflKox.2mDdJCwsdouK2VJ8ucXc_bokH21bvr13o0aq40
-- Channel: 1509123025381888020
-
-ONE-LINE INSTALL:
-pkg update -y && pkg install -y python python-pip termux-api openssl openssl-tool && pip install pyyaml colorama requests
+How to use:
+1. Create /storage/emulated/0/Download/token.txt with your Discord token (one line only)
+2. Run this script
 """
 
 import os, sys, time, subprocess, re, threading, signal, json
@@ -20,24 +18,20 @@ try:
     from colorama import Fore, Style, init
     init(autoreset=True)
 except ImportError:
-    print("Run the one-line install above")
+    print("Run: pkg update -y && pkg install -y python python-pip termux-api openssl openssl-tool && pip install pyyaml colorama requests")
     sys.exit(1)
 
 R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "3.1-HARDCODED"
+VERSION = "3.3-CLEAN"
 CREATOR = "IWZVC + Grok"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
+TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 KEY_PREFIX = "FREE_"
 KEY_TTL = 86400
 DISCORD_API = "https://discord.com/api/v10"
-
-# ========== HARDCODED VALUES (DO NOT CHANGE) ==========
-DISCORD_TOKEN = "MTUwOTExODI3NTM5OTg0ODEwOQ.GGaDWf.k2NNdklSR4ognWM9tMReHkSNktyNyTNQHyJrLg"
-DISCORD_CHANNEL_ID = "1509123025381888020"
-# ======================================================
 
 KEY_PATTERN = re.compile(r"FREE_[A-Za-z0-9_\-]{10,}")
 KW_KEY_INPUT = ["key_example", "KEY_Example", "enter key", "key example", "paste key", "your key", "key input"]
@@ -75,6 +69,24 @@ class Config:
 
 cfg = Config()
 
+def get_discord_token():
+    """Load token from token.txt or ask user once"""
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, "r") as f:
+            token = f.read().strip()
+            if token:
+                return token
+    print()
+    print(Y + "First time setup - enter your Discord token once:")
+    token = input(CY + "Discord Token: " + W).strip()
+    if token:
+        with open(TOKEN_FILE, "w") as f:
+            f.write(token)
+        ok("Token saved to token.txt (never push this file to GitHub)")
+        return token
+    err("No token provided")
+    return ""
+
 def sh(cmd, capture=False, silent=False, timeout=15):
     full = f'su -c "{cmd}"'
     if capture:
@@ -98,7 +110,7 @@ def banner():
     print()
     print(CY + "╔" + "═"*W_ + "╗")
     print(CY + "║" + M + BR + f"{' DELTA KEY SYSTEM v' + VERSION:^{W_}}" + RS + CY + "║")
-    print(CY + "║" + DIM + W + f"{' PURE DISCORD (HARDCODED)':^{W_}}" + RS + CY + "║")
+    print(CY + "║" + DIM + W + f"{' CLEAN VERSION - NO TOKEN IN CODE':^{W_}}" + RS + CY + "║")
     print(CY + "╠" + "═"*W_ + "╣")
     key = cfg.get("delta_key", "")
     if key and key.startswith(KEY_PREFIX):
@@ -110,7 +122,6 @@ def banner():
     link_short = (cfg.get("delta_key_link", "")[:40] + "...") if cfg.get("delta_key_link") else DIM + "not set" + RS
     print(CY + "║" + f" Key Status : {status}".ljust(W_+20) + CY + "║")
     print(CY + "║" + f" Link       : {CY}{link_short}".ljust(W_+20) + CY + "║")
-    print(CY + "║" + f" Channel    : {CY}{DISCORD_CHANNEL_ID}".ljust(W_+20) + CY + "║")
     print(CY + "║" + f" Packages   : {BR+CY}{len(cfg.get('packages', []))}{RS+DIM+W} ready".ljust(W_+20) + CY + "║")
     print(CY + "╚" + "═"*W_ + "╝")
     print()
@@ -242,16 +253,16 @@ def tap_element(terms, xml=None) -> bool:
 from xml.etree import ElementTree as ET
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PURE DISCORD (HARDCODED TOKEN + CHANNEL)
+# DISCORD FUNCTIONS (token loaded from file)
 # ─────────────────────────────────────────────────────────────────────────────
-def post_link_to_discord(link: str) -> str:
+def post_link_to_discord(link: str, token: str, channel_id: str) -> str:
     headers = {
-        "Authorization": DISCORD_TOKEN,
+        "Authorization": token,
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0"
     }
     payload = {"content": f"/bypass {link}\n\n@here NEW DELTA KEY LINK — bypass pls"}
-    url = f"{DISCORD_API}/channels/{DISCORD_CHANNEL_ID}/messages"
+    url = f"{DISCORD_API}/channels/{channel_id}/messages"
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
         if r.status_code == 200:
@@ -259,15 +270,15 @@ def post_link_to_discord(link: str) -> str:
             ok(f"Link posted (msg ID: {msg_id})")
             return msg_id
         else:
-            err(f"Post failed: {r.status_code} {r.text[:80]}")
+            err(f"Post failed: {r.status_code}")
             return ""
     except Exception as e:
         err(f"Post error: {e}")
         return ""
 
-def poll_discord_for_key(timeout: int = 120, poll_interval: float = 2.0) -> tuple:
-    headers = {"Authorization": DISCORD_TOKEN, "User-Agent": "Mozilla/5.0"}
-    url = f"{DISCORD_API}/channels/{DISCORD_CHANNEL_ID}/messages?limit=30"
+def poll_discord_for_key(token: str, channel_id: str, timeout: int = 120, poll_interval: float = 2.0) -> tuple:
+    headers = {"Authorization": token, "User-Agent": "Mozilla/5.0"}
+    url = f"{DISCORD_API}/channels/{channel_id}/messages?limit=30"
     deadline = time.time() + timeout
     seen_ids = set()
 
@@ -283,7 +294,6 @@ def poll_discord_for_key(timeout: int = 120, poll_interval: float = 2.0) -> tupl
                 if msg_id in seen_ids:
                     continue
                 seen_ids.add(msg_id)
-
                 content = msg.get("content", "") + " " + json.dumps(msg.get("embeds", []))
                 m = KEY_PATTERN.search(content)
                 if m:
@@ -294,21 +304,18 @@ def poll_discord_for_key(timeout: int = 120, poll_interval: float = 2.0) -> tupl
         time.sleep(poll_interval)
     return "", ""
 
-def delete_discord_message(message_id: str) -> bool:
+def delete_discord_message(token: str, channel_id: str, message_id: str) -> bool:
     if not message_id:
         return False
-    headers = {"Authorization": DISCORD_TOKEN, "User-Agent": "Mozilla/5.0"}
-    url = f"{DISCORD_API}/channels/{DISCORD_CHANNEL_ID}/messages/{message_id}"
+    headers = {"Authorization": token, "User-Agent": "Mozilla/5.0"}
+    url = f"{DISCORD_API}/channels/{channel_id}/messages/{message_id}"
     try:
         r = requests.delete(url, headers=headers, timeout=10)
         if r.status_code in (200, 204):
-            info("Bypass bot message deleted (channel clean)")
+            info("Bypass bot message deleted")
             return True
-        else:
-            warn(f"Delete failed: {r.status_code}")
-            return False
-    except Exception as e:
-        warn(f"Delete error: {e}")
+        return False
+    except:
         return False
 
 def get_key_from_discord() -> str:
@@ -317,16 +324,28 @@ def get_key_from_discord() -> str:
         err("No Delta Key Link set!")
         return ""
 
-    posted_msg_id = post_link_to_discord(link)
+    token = get_discord_token()
+    if not token:
+        return ""
+
+    # Ask for channel ID once (saved in config)
+    channel_id = cfg.get("discord_channel_id", "")
+    if not channel_id:
+        channel_id = input(Y + "Enter your Discord Channel ID: " + W).strip()
+        if channel_id:
+            cfg["discord_channel_id"] = channel_id
+            cfg.save()
+
+    posted_msg_id = post_link_to_discord(link, token, channel_id)
     if not posted_msg_id:
         return ""
 
     time.sleep(4)
-    key, bot_msg_id = poll_discord_for_key()
+    key, bot_msg_id = poll_discord_for_key(token, channel_id)
 
     if key.startswith(KEY_PREFIX):
         if cfg.get("auto_delete_bot_messages", True) and bot_msg_id:
-            delete_discord_message(bot_msg_id)
+            delete_discord_message(token, channel_id, bot_msg_id)
         return key
     return ""
 
@@ -350,7 +369,7 @@ def _clear_key():
     cfg.save()
 
 def force_grab_and_enter():
-    banner(); section("Force Grab + Enter (Discord)")
+    banner(); section("Force Grab + Enter")
     if not cfg.get("delta_key_link"):
         err("Set Delta Key Link first!")
         go(); return
@@ -437,7 +456,7 @@ def main():
     while True:
         banner()
         print(CY + " ┌─────────────────────────────────────────────┐")
-        print(CY + " │ " + Y + BR + " DELTA KEY SYSTEM v3.1 — HARDCODED" + " " * 6 + RS + CY + "│")
+        print(CY + " │ " + Y + BR + " DELTA KEY SYSTEM v3.3 — CLEAN" + " " * 12 + RS + CY + "│")
         print(CY + " ├─────────────────────────────────────────────┤")
         menu_item("1", "Set Delta Key Link", "")
         menu_item("2", "Force Grab + Enter", "Discord + auto-delete")
