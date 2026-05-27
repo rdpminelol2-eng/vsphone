@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.14 - FINAL (User Token Only)
+Delta Key System v4.17 - FINAL
 """
 
 import os, asyncio, re, yaml
@@ -34,17 +34,10 @@ async def send_real_bypass(link: str) -> str:
     
     key_found = None
     
-    # Enable proper intents
-    intents = discord.Intents.default()
-    intents.message_content = True
-    intents.guilds = True
-    intents.messages = True
-    
-    client = discord.Client(intents=intents)
+    client = discord.Client()
     
     @client.event
     async def on_ready():
-        nonlocal key_found
         guild = client.get_guild(GUILD_ID)
         channel = guild.get_channel(CHANNEL_ID)
         
@@ -55,7 +48,6 @@ async def send_real_bypass(link: str) -> str:
         
         print(f"[DEBUG] Channel: {channel.name}")
         
-        # Send slash command
         commands = await guild.application_commands()
         bypass_cmd = next((c for c in commands if c.name == "bypass"), None)
         
@@ -65,47 +57,46 @@ async def send_real_bypass(link: str) -> str:
             return
         
         await bypass_cmd(channel, url=link)
-        print("[DEBUG] Slash command sent! Polling for key...")
+        print("[DEBUG] Slash command sent! Waiting for response...")
+    
+    @client.event
+    async def on_message(msg):
+        nonlocal key_found
         
-        # Poll for 30 seconds
-        for i in range(30):
-            await asyncio.sleep(1)
+        if msg.channel.id != CHANNEL_ID:
+            return
+        
+        full_text = msg.content
+        
+        print(f"[DEBUG] Embeds: {msg.embeds}")
+        
+        for embed in msg.embeds:
+            if embed.title: full_text += f" {embed.title}"
+            if embed.description: full_text += f" {embed.description}"
+            for field in embed.fields:
+                full_text += f" {field.name} {field.value}"
+        
+        print(f"[DEBUG] RAW: {full_text[:150]}...")
+        
+        m = re.search(r"FREE_[a-zA-Z0-9]+", full_text)
+        
+        if m:
+            key_found = m.group(0)
+            print(f"[DEBUG] ✅ KEY FOUND: {key_found}")
             
             try:
-                async for msg in channel.history(limit=10):
-                    full_text = msg.content
-                    
-                    # Parse embeds properly
-                    for embed in msg.embeds:
-                        if embed.title: full_text += f" {embed.title}"
-                        if embed.description: full_text += f" {embed.description}"
-                        for field in embed.fields:
-                            full_text += f" {field.name} {field.value}"
-                    
-                    if i % 5 == 0:
-                        print(f"[DEBUG] Checking: {full_text[:100]}...")
-                    
-                    m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
-                    if m:
-                        key_found = m.group(0)
-                        print(f"[DEBUG] ✅ KEY FOUND: {key_found}")
-                        
-                        try:
-                            await msg.delete()
-                            print("[DEBUG] Message deleted")
-                        except Exception as e:
-                            print(f"[DEBUG] Delete failed: {e}")
-                        
-                        await client.close()
-                        return
-            
+                await msg.delete()
+                print("[DEBUG] Message deleted")
             except Exception as e:
-                print(f"[DEBUG] Poll error: {e}")
-        
-        print("[DEBUG] No key found after 30 seconds")
-        await client.close()
+                print(f"[DEBUG] Delete failed: {e}")
+            
+            await client.close()
     
     await client.start(token)
+    
+    while client.is_ready() and key_found is None:
+        await asyncio.sleep(1)
+    
     return key_found or ""
 
 def get_key_from_discord(link: str) -> str:
@@ -116,7 +107,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.14 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.17 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
