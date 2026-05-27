@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v3.3 - CLEAN (NO TOKEN IN CODE)
+Delta Key System v3.4 - CLEAN (NO TOKEN IN CODE)
 - Zero tokens or sensitive data in this file
 - Loads token from token.txt (create it once)
 - Auto-deletes bypass bot messages
@@ -25,7 +25,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "3.3-CLEAN"
+VERSION = "3.4-CLEAN"
 CREATOR = "IWZVC + Grok"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
@@ -474,7 +474,7 @@ def main():
     while True:
         banner()
         print(CY + " ┌─────────────────────────────────────────────┐")
-        print(CY + " │ " + Y + BR + " DELTA KEY SYSTEM v3.3 — CLEAN" + " " * 12 + RS + CY + "│")
+        print(CY + " │ " + Y + BR + " DELTA KEY SYSTEM v3.4 — CLEAN" + " " * 12 + RS + CY + "│")
         print(CY + " ├─────────────────────────────────────────────┤")
         menu_item("1", "Set Delta Key Link", "")
         menu_item("2", "Force Grab + Enter", "Discord + auto-delete")
