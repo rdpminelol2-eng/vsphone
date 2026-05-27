@@ -261,7 +261,8 @@ def post_link_to_discord(link: str, token: str, channel_id: str) -> str:
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0"
     }
-    payload = {"content": f"/bypass {link}\n\n@here NEW DELTA KEY LINK — bypass pls"}
+    # Exact format that works (from your screenshot)
+    payload = {"content": f"/bypass url: {link}"}
     url = f"{DISCORD_API}/channels/{channel_id}/messages"
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
@@ -294,7 +295,20 @@ def poll_discord_for_key(token: str, channel_id: str, timeout: int = 120, poll_i
                 if msg_id in seen_ids:
                     continue
                 seen_ids.add(msg_id)
-                content = msg.get("content", "") + " " + json.dumps(msg.get("embeds", []))
+
+                # First try to find "Mobile Version" line (from your screenshot)
+                embeds = msg.get("embeds", [])
+                for embed in embeds:
+                    fields = embed.get("fields", [])
+                    for field in fields:
+                        if "Mobile Version" in field.get("name", ""):
+                            value = field.get("value", "")
+                            m = KEY_PATTERN.search(value)
+                            if m:
+                                return m.group(0), msg_id
+
+                # Fallback: search everywhere
+                content = msg.get("content", "") + " " + json.dumps(embeds)
                 m = KEY_PATTERN.search(content)
                 if m:
                     key = m.group(0)
