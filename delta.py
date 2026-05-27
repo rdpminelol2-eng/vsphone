@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.20 - FINAL (Fetch Message Fix)
+Delta Key System v6.1 - FINAL (Correct Discum)
 """
 
-import os, asyncio, re, yaml
-import discord
+import os, re, yaml
+import discum
+from discum.utils.slash import SlashCommander
 
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
@@ -24,7 +25,7 @@ def load_cfg():
 def save_cfg(data):
     yaml.dump(data, open(CFG_FILE, "w"))
 
-async def send_real_bypass(link: str) -> str:
+def send_real_bypass(link: str) -> str:
     token = get_token()
     if not token:
         print("[DEBUG] No token!")
@@ -34,103 +35,80 @@ async def send_real_bypass(link: str) -> str:
     
     key_found = None
     
-    client = discord.Client()
+    bot = discum.Client(token=token, log=False)
     
-    async def process_message(msg):
+    @bot.gateway.command
+    def on_ready(resp):
+        if resp.event.ready:
+            print("[DEBUG] Connected to Discord!")
+            
+            slash = SlashCommander(
+                bot.getSlashCommands(str(GUILD_ID)).json()
+            )
+            
+            print("[DEBUG] Sending slash command...")
+            
+            bot.triggerSlashCommand(
+                slash.get("bypass"),
+                channelID=str(CHANNEL_ID),
+                guildID=str(GUILD_ID),
+                data={"url": link}
+            )
+            
+            print("[DEBUG] Slash command sent!")
+    
+    @bot.gateway.command
+    def on_message(resp):
         nonlocal key_found
         
-        if msg.channel.id != CHANNEL_ID:
-            return
-        
-        try:
-            # REFETCH FULL MESSAGE FROM API
-            msg = await msg.channel.fetch_message(msg.id)
-            print("[DEBUG] Message refetched from API")
-        except Exception as e:
-            print(f"[DEBUG] Fetch failed: {e}")
-            return
-        
-        full_text = msg.content or ""
-        
-        print(f"[DEBUG] REFETCHED EMBEDS: {msg.embeds}")
-        
-        for embed in msg.embeds:
-            try:
-                embed_dict = embed.to_dict()
-                print(f"[DEBUG] EMBED DICT: {embed_dict}")
-                
-                if embed.title: full_text += f" {embed.title}"
-                if embed.description: full_text += f" {embed.description}"
-                
-                for field in embed_dict.get("fields", []):
-                    full_text += f" {field.get('name','')} {field.get('value','')}"
-            except Exception as e:
-                print(f"[DEBUG] Embed parse error: {e}")
-        
-        print(f"[DEBUG] FINAL TEXT: {full_text}")
-        
-        m = re.search(r"FREE_[A-Za-z0-9]+", full_text)
-        
-        if m:
-            key_found = m.group(0)
-            print(f"[DEBUG] ✅ KEY FOUND: {key_found}")
+        if resp.event.message or resp.event.message_updated:
+            msg = resp.parsed.auto()
             
-            try:
-                await msg.delete()
-                print("[DEBUG] Message deleted")
-            except Exception as e:
-                print(f"[DEBUG] Delete failed: {e}")
+            print(msg)  # RAW PAYLOAD DEBUG
             
-            await client.close()
+            if msg.get("channel_id") != str(CHANNEL_ID):
+                return
+            
+            full_text = msg.get("content", "")
+            
+            for embed in msg.get("embeds", []):
+                if embed.get("title"):
+                    full_text += " " + embed["title"]
+                if embed.get("description"):
+                    full_text += " " + embed["description"]
+                for field in embed.get("fields", []):
+                    full_text += f" {field.get('name','')}"
+                    full_text += f" {field.get('value','')}"
+            
+            print(f"[DEBUG] FULL: {full_text}")
+            
+            m = re.search(r"FREE_[A-Za-z0-9]+", full_text)
+            
+            if m:
+                key_found = m.group(0)
+                print(f"[DEBUG] ✅ KEY FOUND: {key_found}")
+                
+                try:
+                    bot.deleteMessage(str(CHANNEL_ID), msg.get("id"))
+                    print("[DEBUG] Message deleted")
+                except:
+                    pass
+                
+                bot.gateway.close()
     
-    @client.event
-    async def on_ready():
-        guild = client.get_guild(GUILD_ID)
-        channel = guild.get_channel(CHANNEL_ID)
-        
-        if not guild or not channel:
-            print("[DEBUG] ERROR: Guild or Channel not found!")
-            await client.close()
-            return
-        
-        print(f"[DEBUG] Channel: {channel.name}")
-        
-        commands = await guild.application_commands()
-        bypass_cmd = next((c for c in commands if c.name == "bypass"), None)
-        
-        if not bypass_cmd:
-            print("[DEBUG] ERROR: /bypass command not found!")
-            await client.close()
-            return
-        
-        await bypass_cmd(channel, url=link)
-        print("[DEBUG] Slash command sent!")
-    
-    @client.event
-    async def on_message(msg):
-        await process_message(msg)
-    
-    @client.event
-    async def on_message_edit(before, after):
-        print("[DEBUG] MESSAGE EDIT DETECTED")
-        await process_message(after)
-    
-    await client.start(token)
-    
-    while client.is_ready() and key_found is None:
-        await asyncio.sleep(1)
+    bot.gateway.run(auto_reconnect=True)
     
     return key_found or ""
 
 def get_key_from_discord(link: str) -> str:
-    return asyncio.run(send_real_bypass(link))
+    return send_real_bypass(link)
 
 def main():
     cfg = load_cfg()
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.20 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.1 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
