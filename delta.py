@@ -47,7 +47,7 @@ async def send_real_bypass(link: str) -> str:
             messages = [msg async for msg in channel.history(limit=3)]
             
             for msg in messages:
-                if "bypass" in msg.content.lower() or any("bypass" in str(e).lower() for e in msg.embeds):
+                if "bypass" in msg.content.lower() or any("**Bypass Success**" in str(e).lower() for e in msg.embeds):
                     full_text = msg.content + " " + str(msg.embeds)
                     m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
                     if m:
