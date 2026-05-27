@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.10 - FINAL
+Delta Key System v4.11 - FINAL (Get Last Message Only)
 """
 
 import os, asyncio, re, yaml
@@ -43,19 +43,18 @@ async def send_real_bypass(link: str) -> str:
             await bypass_cmd(channel, url=link)
             await asyncio.sleep(10)
             
-            messages = [msg async for msg in channel.history(limit=5)]
+            # Get the LAST message only
+            last_msg = await channel.fetch_message(channel.last_message_id)
             
-            for msg in messages:
-                full_text = msg.content + " " + str(msg.embeds)
-                if "**Bypass Success**" in full_text or "Bypass Success" in full_text:
-                    m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
-                    if m:
-                        key_found = m.group(0)
-                        try:
-                            await msg.delete()
-                        except:
-                            pass
-                        break
+            full_text = last_msg.content + " " + str(last_msg.embeds)
+            m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
+            if m:
+                key_found = m.group(0)
+                # Delete it
+                try:
+                    await last_msg.delete()
+                except:
+                    pass
         
         await client.close()
 
@@ -70,7 +69,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.10 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.11 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
