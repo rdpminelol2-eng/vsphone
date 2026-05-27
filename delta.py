@@ -25,7 +25,7 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "3.4-CLEAN"
+VERSION = "3.3-CLEAN"
 CREATOR = "IWZVC + Grok"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
@@ -256,8 +256,10 @@ from xml.etree import ElementTree as ET
 # DISCORD FUNCTIONS (token loaded from file)
 # ─────────────────────────────────────────────────────────────────────────────
 def post_link_to_discord(link: str, token: str, channel_id: str) -> str:
+    # Auto-add "Bot " prefix for real bot tokens
+    auth = token if token.startswith("Bot ") else f"Bot {token}"
     headers = {
-        "Authorization": token,
+        "Authorization": auth,
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0"
     }
@@ -278,7 +280,8 @@ def post_link_to_discord(link: str, token: str, channel_id: str) -> str:
         return ""
 
 def poll_discord_for_key(token: str, channel_id: str, timeout: int = 120, poll_interval: float = 2.0) -> tuple:
-    headers = {"Authorization": token, "User-Agent": "Mozilla/5.0"}
+    auth = token if token.startswith("Bot ") else f"Bot {token}"
+    headers = {"Authorization": auth, "User-Agent": "Mozilla/5.0"}
     url = f"{DISCORD_API}/channels/{channel_id}/messages?limit=30"
     deadline = time.time() + timeout
     seen_ids = set()
@@ -321,7 +324,8 @@ def poll_discord_for_key(token: str, channel_id: str, timeout: int = 120, poll_i
 def delete_discord_message(token: str, channel_id: str, message_id: str) -> bool:
     if not message_id:
         return False
-    headers = {"Authorization": token, "User-Agent": "Mozilla/5.0"}
+    auth = token if token.startswith("Bot ") else f"Bot {token}"
+    headers = {"Authorization": auth, "User-Agent": "Mozilla/5.0"}
     url = f"{DISCORD_API}/channels/{channel_id}/messages/{message_id}"
     try:
         r = requests.delete(url, headers=headers, timeout=10)
