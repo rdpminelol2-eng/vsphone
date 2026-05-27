@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.3 - FINAL
+Delta Key System v4.4 - FINAL WORKING
 """
 
 import os, asyncio, re, yaml
@@ -47,7 +47,7 @@ async def send_real_bypass(link: str) -> str:
                     break
         await client.close()
 
-    await client.start(token, bot=False)
+    await client.start(token)   # ← Removed bot=False
     return key_found or ""
 
 def get_key_from_discord(link: str) -> str:
@@ -58,7 +58,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.3 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.4 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
