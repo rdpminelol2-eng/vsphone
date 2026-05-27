@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v6.4 - FINAL (Hybrid: discord.py-self + Discum)
+Delta Key System v6.5 - FINAL (No Intents)
 """
 
 import os, re, yaml, asyncio
@@ -26,7 +26,6 @@ def save_cfg(data):
     yaml.dump(data, open(CFG_FILE, "w"))
 
 async def send_slash_command(link: str):
-    """Send slash command using discord.py-self"""
     token = get_token()
     if not token:
         return False
@@ -43,7 +42,7 @@ async def send_slash_command(link: str):
         
         if bypass_cmd:
             await bypass_cmd(channel, url=link)
-            print("[DEBUG] Slash command sent with discord.py-self")
+            print("[DEBUG] Slash command sent")
         
         await client.close()
     
@@ -60,12 +59,12 @@ def send_real_bypass(link: str) -> str:
     
     key_found = None
     
-    # Step 1: Send slash command with discord.py-self
+    # Send slash command with discord.py-self
     print("[DEBUG] Sending slash command...")
     asyncio.run(send_slash_command(link))
     
-    # Step 2: Listen with Discum for raw payload
-    print("[DEBUG] Listening for key with Discum...")
+    # Listen with Discum
+    print("[DEBUG] Listening for key...")
     
     bot = discum.Client(token=token, log=False)
     
@@ -79,7 +78,7 @@ def send_real_bypass(link: str) -> str:
             if msg.get("channel_id") != CHANNEL_ID:
                 return
             
-            full_text = str(resp.raw)  # RAW PAYLOAD
+            full_text = str(resp.raw)
             
             m = re.search(r"FREE_[A-Za-z0-9]+", full_text)
             
@@ -100,7 +99,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.4 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.5 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
