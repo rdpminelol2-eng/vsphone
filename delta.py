@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.1 - FINAL
-- Real /bypass slash command
-- Link saved automatically in settings
-- Token from token.txt (safe for GitHub)
+Delta Key System v4.2 - FINAL
+Real slash command + Link auto-saved
 """
 
-import os, sys, time, asyncio, re, yaml
+import os, asyncio, re, yaml
 import discord
+from discord import Intents
 
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
@@ -30,7 +29,7 @@ def save_cfg(data):
 async def send_real_bypass(link: str) -> str:
     token = get_token()
     if not token: return ""
-    client = discord.Client(intents=discord.Intents.default())
+    client = discord.Client(intents=Intents.default())
     key_found = None
 
     @client.event
@@ -45,7 +44,7 @@ async def send_real_bypass(link: str) -> str:
             await asyncio.sleep(6)
             async for msg in channel.history(limit=8):
                 m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", msg.content)
-                if m: 
+                if m:
                     key_found = m.group(0)
                     break
         await client.close()
@@ -61,11 +60,13 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.1 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.2 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
-        print(f"\n\033[96m[1]\033[97m Force Grab + Enter (Real Slash)  {'(link saved)' if link else ''}")
+        status = "\033[92m(link saved)\033[0m" if link else ""
+        
+        print(f"\n\033[96m[1]\033[97m Force Grab + Enter (Real Slash) {status}")
         print("\033[96m[2]\033[97m Enter Key to All Packages")
         print("\033[96m[3]\033[97m Set Delta Key Link")
         print("\033[96m[4]\033[97m Exit\n")
@@ -74,27 +75,27 @@ def main():
         
         if c == "1":
             if not link:
-                print("\033[93mNo link saved. Set it first (option 3)\033[0m")
+                print("\033[93mNo link saved. Use option 3 first.\033[0m")
                 input()
                 continue
-            print("\033[96m › Sending real /bypass...\033[0m")
+            print("\033[96m › Sending real /bypass command...\033[0m")
             key = get_key_from_discord(link)
             if key.startswith("FREE_"):
-                print(f"\033[92m ✔ Key: {key[:30]}...\033[0m")
+                print(f"\033[92m ✔ Key received: {key[:30]}...\033[0m")
             else:
-                print("\033[91m ✘ No key\033[0m")
+                print("\033[91m ✘ No key received\033[0m")
             input()
         
         elif c == "2":
-            print("Coming soon...")
+            print("Key entering feature coming in next update...")
             input()
         
         elif c == "3":
-            new_link = input("\033[93mPaste new Delta Key Link: \033[97m").strip()
+            new_link = input("\033[93mPaste Delta Key Link: \033[97m").strip()
             if new_link.startswith("http"):
                 cfg["delta_key_link"] = new_link
                 save_cfg(cfg)
-                print("\033[92m ✔ Link saved!\033[0m")
+                print("\033[92m ✔ Link saved permanently!\033[0m")
                 input()
         
         elif c == "4":
