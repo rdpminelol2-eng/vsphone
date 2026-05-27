@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Delta Key System - FINAL (No Intents)
+Delta Key System - FINAL (Expert Method)
 """
 
-import os, re, yaml, asyncio
+import os, re, yaml, asyncio, time
 import discord
 import discum
 
@@ -62,6 +62,8 @@ def send_real_bypass(link: str) -> str:
     print("[DEBUG] Sending slash command...")
     asyncio.run(send_slash_command(link))
     
+    time.sleep(2)  # Wait for response
+    
     print("[DEBUG] Listening for key...")
     
     bot = discum.Client(token=token, log=False)
@@ -70,15 +72,18 @@ def send_real_bypass(link: str) -> str:
     def on_message(resp):
         nonlocal key_found
         
-        if resp.event.message or resp.event.message_updated:
+        event_type = resp.raw.get("t")
+        
+        if event_type in ("MESSAGE_CREATE", "MESSAGE_UPDATE"):
             msg = resp.parsed.auto()
             
             if msg.get("channel_id") != CHANNEL_ID:
                 return
             
             full_text = str(resp.raw)
+            print(f"[DEBUG] RAW: {full_text[:200]}...")
             
-            m = re.search(r"FREE_[A-Za-z0-9]+", full_text)
+            m = re.search(r"FREE_[A-Za-z0-9_-]+", full_text)
             
             if m:
                 key_found = m.group(0)
