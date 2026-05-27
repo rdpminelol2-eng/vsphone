@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v6.5 - FINAL (No Intents)
+Delta Key System v6.6 - FINAL
 """
 
 import os, re, yaml, asyncio
@@ -30,7 +30,8 @@ async def send_slash_command(link: str):
     if not token:
         return False
     
-    client = discord.Client()
+    intents = discord.Intents.default()
+    client = discord.Client(intents=intents)
     
     @client.event
     async def on_ready():
@@ -59,11 +60,9 @@ def send_real_bypass(link: str) -> str:
     
     key_found = None
     
-    # Send slash command with discord.py-self
     print("[DEBUG] Sending slash command...")
     asyncio.run(send_slash_command(link))
     
-    # Listen with Discum
     print("[DEBUG] Listening for key...")
     
     bot = discum.Client(token=token, log=False)
@@ -99,7 +98,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.5 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.6 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
