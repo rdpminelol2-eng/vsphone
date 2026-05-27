@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v6.1 - FINAL (Correct Discum)
+Delta Key System v6.2 - FINAL (Fixed Slash Command)
 """
 
 import os, re, yaml
@@ -42,9 +42,11 @@ def send_real_bypass(link: str) -> str:
         if resp.event.ready:
             print("[DEBUG] Connected to Discord!")
             
-            slash = SlashCommander(
-                bot.getSlashCommands(str(GUILD_ID)).json()
-            )
+            # Get slash commands
+            cmds = bot.getSlashCommands(str(GUILD_ID)).json()
+            print(f"[DEBUG] Commands JSON: {cmds}")
+            
+            slash = SlashCommander(cmds["application_commands"])
             
             print("[DEBUG] Sending slash command...")
             
@@ -52,7 +54,7 @@ def send_real_bypass(link: str) -> str:
                 slash.get("bypass"),
                 channelID=str(CHANNEL_ID),
                 guildID=str(GUILD_ID),
-                data={"url": link}
+                data=[link]
             )
             
             print("[DEBUG] Slash command sent!")
@@ -64,7 +66,7 @@ def send_real_bypass(link: str) -> str:
         if resp.event.message or resp.event.message_updated:
             msg = resp.parsed.auto()
             
-            print(msg)  # RAW PAYLOAD DEBUG
+            print(msg)
             
             if msg.get("channel_id") != str(CHANNEL_ID):
                 return
@@ -108,7 +110,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.1 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v6.2 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
