@@ -1,25 +1,19 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.12 - FINAL (User Token + Bot Token)
+Delta Key System v4.14 - FINAL (User Token Only)
 """
 
 import os, asyncio, re, yaml
 import discord
 
-USER_TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
-BOT_TOKEN_FILE = "/storage/emulated/0/Download/token2.txt"
+TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
 GUILD_ID = 1424475459441262807
 CHANNEL_ID = 1509123025381888020
 
-def get_user_token():
-    if os.path.exists(USER_TOKEN_FILE):
-        return open(USER_TOKEN_FILE).read().strip()
-    return ""
-
-def get_bot_token():
-    if os.path.exists(BOT_TOKEN_FILE):
-        return open(BOT_TOKEN_FILE).read().strip()
+def get_token():
+    if os.path.exists(TOKEN_FILE):
+        return open(TOKEN_FILE).read().strip()
     return ""
 
 def load_cfg():
@@ -31,71 +25,87 @@ def save_cfg(data):
     yaml.dump(data, open(CFG_FILE, "w"))
 
 async def send_real_bypass(link: str) -> str:
-    user_token = get_user_token()
-    bot_token = get_bot_token()
-    
-    if not user_token or not bot_token:
-        print("[DEBUG] Missing token(s)!")
+    token = get_token()
+    if not token:
+        print("[DEBUG] No token!")
         return ""
     
-    print(f"[DEBUG] User token: {user_token[:20]}...")
-    print(f"[DEBUG] Bot token: {bot_token[:20]}...")
+    print(f"[DEBUG] Token: {token[:25]}...")
     
     key_found = None
     
-    # Step 1: Send slash command with USER token
-    user_client = discord.Client()
+    # Enable proper intents
+    intents = discord.Intents.default()
+    intents.message_content = True
+    intents.guilds = True
+    intents.messages = True
     
-    @user_client.event
+    client = discord.Client(intents=intents)
+    
+    @client.event
     async def on_ready():
-        guild = user_client.get_guild(GUILD_ID)
+        nonlocal key_found
+        guild = client.get_guild(GUILD_ID)
         channel = guild.get_channel(CHANNEL_ID)
         
+        if not guild or not channel:
+            print("[DEBUG] ERROR: Guild or Channel not found!")
+            await client.close()
+            return
+        
+        print(f"[DEBUG] Channel: {channel.name}")
+        
+        # Send slash command
         commands = await guild.application_commands()
         bypass_cmd = next((c for c in commands if c.name == "bypass"), None)
         
-        if bypass_cmd:
-            await bypass_cmd(channel, url=link)
-            print("[DEBUG] Slash command sent with user token")
+        if not bypass_cmd:
+            print("[DEBUG] ERROR: /bypass command not found!")
+            await client.close()
+            return
         
-        await user_client.close()
-    
-    await user_client.start(user_token)
-    
-    # Step 2: Wait and read with BOT token
-    await asyncio.sleep(10)
-    
-    bot_client = discord.Client()
-    
-    @bot_client.event
-    async def on_ready():
-        nonlocal key_found
-        guild = bot_client.get_guild(GUILD_ID)
-        channel = guild.get_channel(CHANNEL_ID)
+        await bypass_cmd(channel, url=link)
+        print("[DEBUG] Slash command sent! Polling for key...")
         
-        # Poll for key
-        for i in range(15):
+        # Poll for 30 seconds
+        for i in range(30):
             await asyncio.sleep(1)
+            
             try:
-                last_msg = await channel.fetch_message(channel.last_message_id)
-                full_text = last_msg.content + " " + str(last_msg.embeds)
-                
-                m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
-                if m:
-                    key_found = m.group(0)
-                    print(f"[DEBUG] Key found: {key_found}")
-                    try:
-                        await last_msg.delete()
-                        print("[DEBUG] Message deleted with bot token")
-                    except:
-                        pass
-                    break
+                async for msg in channel.history(limit=10):
+                    full_text = msg.content
+                    
+                    # Parse embeds properly
+                    for embed in msg.embeds:
+                        if embed.title: full_text += f" {embed.title}"
+                        if embed.description: full_text += f" {embed.description}"
+                        for field in embed.fields:
+                            full_text += f" {field.name} {field.value}"
+                    
+                    if i % 5 == 0:
+                        print(f"[DEBUG] Checking: {full_text[:100]}...")
+                    
+                    m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
+                    if m:
+                        key_found = m.group(0)
+                        print(f"[DEBUG] ✅ KEY FOUND: {key_found}")
+                        
+                        try:
+                            await msg.delete()
+                            print("[DEBUG] Message deleted")
+                        except Exception as e:
+                            print(f"[DEBUG] Delete failed: {e}")
+                        
+                        await client.close()
+                        return
+            
             except Exception as e:
                 print(f"[DEBUG] Poll error: {e}")
         
-        await bot_client.close()
+        print("[DEBUG] No key found after 30 seconds")
+        await client.close()
     
-    await bot_client.start(bot_token)
+    await client.start(token)
     return key_found or ""
 
 def get_key_from_discord(link: str) -> str:
@@ -106,7 +116,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.12 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.14 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
