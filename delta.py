@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Delta Key System v3.0 - PURE DISCORD ONLY (API REMOVED)
-- Completely removed all BypassTools API code (it was broken)
-- Uses ONLY your Discord self-bot
-- Auto-deletes the bypass bot's reply message after extracting the key (keeps channel clean)
+Delta Key System v3.1 - PURE DISCORD (HARDCODED)
+- Token and Channel are HARDCODED (no longer in settings)
+- API completely removed
+- Auto-deletes bypass bot message after getting key
 
-Pre-loaded:
+Your values are locked in:
 - Token: MTUwOTExODI3NTM5OTg0ODEwOQ.GflKox.2mDdJCwsdouK2VJ8ucXc_bokH21bvr13o0aq40
 - Channel: 1509123025381888020
 
@@ -27,16 +27,17 @@ R = Fore.RED; G = Fore.GREEN; Y = Fore.YELLOW
 M = Fore.MAGENTA; CY = Fore.CYAN; W = Fore.WHITE
 DIM = Style.DIM; BR = Style.BRIGHT; RS = Style.RESET_ALL
 
-VERSION = "3.0-PURE-DISCORD"
+VERSION = "3.1-HARDCODED"
 CREATOR = "IWZVC + Grok"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
 KEY_PREFIX = "FREE_"
 KEY_TTL = 86400
 DISCORD_API = "https://discord.com/api/v10"
 
-# Pre-loaded values
-DEFAULT_DISCORD_TOKEN = "MTUwOTExODI3NTM5OTg0ODEwOQ.GflKox.2mDdJCwsdouK2VJ8ucXc_bokH21bvr13o0aq40"
-DEFAULT_CHANNEL_ID = "1509123025381888020"
+# ========== HARDCODED VALUES (DO NOT CHANGE) ==========
+DISCORD_TOKEN = "MTUwOTExODI3NTM5OTg0ODEwOQ.GGaDWf.k2NNdklSR4ognWM9tMReHkSNktyNyTNQHyJrLg"
+DISCORD_CHANNEL_ID = "1509123025381888020"
+# ======================================================
 
 KEY_PATTERN = re.compile(r"FREE_[A-Za-z0-9_\-]{10,}")
 KW_KEY_INPUT = ["key_example", "KEY_Example", "enter key", "key example", "paste key", "your key", "key input"]
@@ -56,10 +57,7 @@ class Config:
         "delta_key": "",
         "delta_key_time": 0,
         "check_interval": 300,
-        "discord_token": DEFAULT_DISCORD_TOKEN,
-        "discord_channel_id": DEFAULT_CHANNEL_ID,
-        "bypass_bot_user_id": "",          # Optional: only accept from this bot
-        "auto_delete_bot_messages": True,  # Delete bypass bot reply after getting key
+        "auto_delete_bot_messages": True,
         "auto_enter_on_grab": True,
     }
     def __init__(self):
@@ -100,7 +98,7 @@ def banner():
     print()
     print(CY + "╔" + "═"*W_ + "╗")
     print(CY + "║" + M + BR + f"{' DELTA KEY SYSTEM v' + VERSION:^{W_}}" + RS + CY + "║")
-    print(CY + "║" + DIM + W + f"{' PURE DISCORD + AUTO DELETE':^{W_}}" + RS + CY + "║")
+    print(CY + "║" + DIM + W + f"{' PURE DISCORD (HARDCODED)':^{W_}}" + RS + CY + "║")
     print(CY + "╠" + "═"*W_ + "╣")
     key = cfg.get("delta_key", "")
     if key and key.startswith(KEY_PREFIX):
@@ -110,10 +108,9 @@ def banner():
     else:
         status = R + "NONE" + RS
     link_short = (cfg.get("delta_key_link", "")[:40] + "...") if cfg.get("delta_key_link") else DIM + "not set" + RS
-    chan = cfg.get("discord_channel_id", "")[:12] + "..." if cfg.get("discord_channel_id") else DIM + "not set" + RS
     print(CY + "║" + f" Key Status : {status}".ljust(W_+20) + CY + "║")
     print(CY + "║" + f" Link       : {CY}{link_short}".ljust(W_+20) + CY + "║")
-    print(CY + "║" + f" Channel    : {CY}{chan}".ljust(W_+20) + CY + "║")
+    print(CY + "║" + f" Channel    : {CY}{DISCORD_CHANNEL_ID}".ljust(W_+20) + CY + "║")
     print(CY + "║" + f" Packages   : {BR+CY}{len(cfg.get('packages', []))}{RS+DIM+W} ready".ljust(W_+20) + CY + "║")
     print(CY + "╚" + "═"*W_ + "╝")
     print()
@@ -245,22 +242,16 @@ def tap_element(terms, xml=None) -> bool:
 from xml.etree import ElementTree as ET
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PURE DISCORD (with auto-delete)
+# PURE DISCORD (HARDCODED TOKEN + CHANNEL)
 # ─────────────────────────────────────────────────────────────────────────────
 def post_link_to_discord(link: str) -> str:
-    """Posts the link and returns the message ID of what we posted"""
-    token = cfg.get("discord_token", "").strip()
-    channel_id = cfg.get("discord_channel_id", "").strip()
-    if not token or not channel_id:
-        err("Discord token or channel not set!")
-        return ""
     headers = {
-        "Authorization": token,
+        "Authorization": DISCORD_TOKEN,
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0"
     }
     payload = {"content": f"/bypass {link}\n\n@here NEW DELTA KEY LINK — bypass pls"}
-    url = f"{DISCORD_API}/channels/{channel_id}/messages"
+    url = f"{DISCORD_API}/channels/{DISCORD_CHANNEL_ID}/messages"
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
         if r.status_code == 200:
@@ -275,16 +266,8 @@ def post_link_to_discord(link: str) -> str:
         return ""
 
 def poll_discord_for_key(timeout: int = 120, poll_interval: float = 2.0) -> tuple:
-    """Polls for key + returns (key, message_id_of_bot_reply)"""
-    token = cfg.get("discord_token", "").strip()
-    channel_id = cfg.get("discord_channel_id", "").strip()
-    bypass_bot_id = cfg.get("bypass_bot_user_id", "").strip()
-
-    if not token or not channel_id:
-        return "", ""
-
-    headers = {"Authorization": token, "User-Agent": "Mozilla/5.0"}
-    url = f"{DISCORD_API}/channels/{channel_id}/messages?limit=30"
+    headers = {"Authorization": DISCORD_TOKEN, "User-Agent": "Mozilla/5.0"}
+    url = f"{DISCORD_API}/channels/{DISCORD_CHANNEL_ID}/messages?limit=30"
     deadline = time.time() + timeout
     seen_ids = set()
 
@@ -305,10 +288,6 @@ def poll_discord_for_key(timeout: int = 120, poll_interval: float = 2.0) -> tupl
                 m = KEY_PATTERN.search(content)
                 if m:
                     key = m.group(0)
-                    author_id = str(msg.get("author", {}).get("id", ""))
-                    if bypass_bot_id and author_id != bypass_bot_id:
-                        continue
-                    info(f"Key found from {msg.get('author', {}).get('username', 'bot')}")
                     return key, msg_id
         except Exception as e:
             warn(f"Poll error: {e}")
@@ -316,15 +295,10 @@ def poll_discord_for_key(timeout: int = 120, poll_interval: float = 2.0) -> tupl
     return "", ""
 
 def delete_discord_message(message_id: str) -> bool:
-    """Deletes a message (used to clean up bypass bot reply)"""
     if not message_id:
         return False
-    token = cfg.get("discord_token", "").strip()
-    channel_id = cfg.get("discord_channel_id", "").strip()
-    if not token or not channel_id:
-        return False
-    headers = {"Authorization": token, "User-Agent": "Mozilla/5.0"}
-    url = f"{DISCORD_API}/channels/{channel_id}/messages/{message_id}"
+    headers = {"Authorization": DISCORD_TOKEN, "User-Agent": "Mozilla/5.0"}
+    url = f"{DISCORD_API}/channels/{DISCORD_CHANNEL_ID}/messages/{message_id}"
     try:
         r = requests.delete(url, headers=headers, timeout=10)
         if r.status_code in (200, 204):
@@ -347,11 +321,10 @@ def get_key_from_discord() -> str:
     if not posted_msg_id:
         return ""
 
-    time.sleep(4)  # wait for bypass bot to reply
+    time.sleep(4)
     key, bot_msg_id = poll_discord_for_key()
 
     if key.startswith(KEY_PREFIX):
-        # Auto-delete the bypass bot's message if enabled
         if cfg.get("auto_delete_bot_messages", True) and bot_msg_id:
             delete_discord_message(bot_msg_id)
         return key
@@ -395,7 +368,7 @@ def force_grab_and_enter():
     go()
 
 def start_monitor():
-    banner(); section("Background Monitor Started (Discord + Auto-Delete)")
+    banner(); section("Background Monitor Started")
     def monitor():
         while True:
             try:
@@ -418,22 +391,18 @@ def start_monitor():
 
 def settings_menu():
     while True:
-        banner(); section("Settings (Discord Only)")
+        banner(); section("Settings")
         link = (cfg.get("delta_key_link", "")[:40] + "...") if cfg.get("delta_key_link") else DIM + "(not set)" + RS
-        token_set = G+BR+"LOADED" if cfg.get("discord_token") else R+"NOT SET"
-        chan = cfg.get("discord_channel_id", "")[:12] + "..." if cfg.get("discord_channel_id") else DIM + "not set" + RS
         auto_del = G+BR+"ON" if cfg.get("auto_delete_bot_messages", True) else R+BR+"OFF"
         interval = cfg.get("check_interval")
         auto = G+BR+"ON" if cfg.get("auto_enter_on_grab", True) else R+BR+"OFF"
 
         print(W + f" {CY}[1]{W} Delta Key Link         {DIM}→ {CY}{link}")
-        print(W + f" {CY}[2]{W} Discord Token          {DIM}→ {token_set}{RS}")
-        print(W + f" {CY}[3]{W} Discord Channel ID     {DIM}→ {chan}")
-        print(W + f" {CY}[4]{W} Auto-Delete Bot Msgs   {DIM}→ {auto_del}{RS}")
-        print(W + f" {CY}[5]{W} Check Interval         {DIM}→ {Y}{interval}s")
-        print(W + f" {CY}[6]{W} Auto-Enter on Grab     {DIM}→ {auto}{RS}")
-        print(W + f" {CY}[7]{W} Clear Current Key")
-        print(W + f" {CY}[8]{W} Detect Packages Now")
+        print(W + f" {CY}[2]{W} Auto-Delete Bot Msgs   {DIM}→ {auto_del}{RS}")
+        print(W + f" {CY}[3]{W} Check Interval         {DIM}→ {Y}{interval}s")
+        print(W + f" {CY}[4]{W} Auto-Enter on Grab     {DIM}→ {auto}{RS}")
+        print(W + f" {CY}[5]{W} Clear Current Key")
+        print(W + f" {CY}[6]{W} Detect Packages Now")
         print(W + f" {CY}[0]{W} Back"); print()
         c = input(CY + " › " + W + "Choice: " + RS).strip()
 
@@ -443,30 +412,20 @@ def settings_menu():
                 cfg["delta_key_link"] = new_link
                 ok("Saved.")
         elif c == "2":
-            new_token = input(Y + "Paste Discord token: " + W).strip()
-            if new_token:
-                cfg["discord_token"] = new_token
-                ok("Token updated.")
-        elif c == "3":
-            new_chan = input(Y + "Channel ID: " + W).strip()
-            if new_chan.isdigit():
-                cfg["discord_channel_id"] = new_chan
-                ok("Channel updated.")
-        elif c == "4":
             cfg["auto_delete_bot_messages"] = not cfg.get("auto_delete_bot_messages", True)
             ok("Toggled.")
-        elif c == "5":
+        elif c == "3":
             v = input(Y + "Seconds (60-3600): " + W).strip()
             if v.isdigit() and 60 <= int(v) <= 3600:
                 cfg["check_interval"] = int(v)
                 ok("Saved.")
-        elif c == "6":
+        elif c == "4":
             cfg["auto_enter_on_grab"] = not cfg.get("auto_enter_on_grab", True)
             ok("Toggled.")
-        elif c == "7":
+        elif c == "5":
             _clear_key()
             ok("Key cleared.")
-        elif c == "8":
+        elif c == "6":
             detect_packages(force=True)
             ok(f"Found {len(cfg['packages'])} packages.")
         elif c == "0":
@@ -478,13 +437,13 @@ def main():
     while True:
         banner()
         print(CY + " ┌─────────────────────────────────────────────┐")
-        print(CY + " │ " + Y + BR + " DELTA KEY SYSTEM v3.0 — PURE DISCORD" + " " * 5 + RS + CY + "│")
+        print(CY + " │ " + Y + BR + " DELTA KEY SYSTEM v3.1 — HARDCODED" + " " * 6 + RS + CY + "│")
         print(CY + " ├─────────────────────────────────────────────┤")
         menu_item("1", "Set Delta Key Link", "")
         menu_item("2", "Force Grab + Enter", "Discord + auto-delete")
         menu_item("3", "Enter Current Key to All", "")
         menu_item("4", "Start Background Monitor", "auto every 5min")
-        menu_item("5", "Settings", "token, channel, auto-delete")
+        menu_item("5", "Settings", "link, auto-delete, interval")
         menu_item("0", "Exit", "")
         print(CY + " └─────────────────────────────────────────────┘")
         print()
@@ -501,7 +460,7 @@ def main():
         elif c == "5":
             settings_menu()
         elif c == "0":
-            print(); print(M + BR + " Goodbye! Pure Discord mode active." + RS)
+            print(); print(M + BR + " Goodbye!" + RS)
             print()
             break
 
