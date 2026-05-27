@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.5 - FINAL (Fixed Key Detection)
+Delta Key System v4.6 - FINAL
+- Real slash command
+- Full message + embed key detection
+- Auto-delete bypass bot message
 """
 
 import os, asyncio, re, yaml
 import discord
-import json
 
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
@@ -30,31 +32,37 @@ async def send_real_bypass(link: str) -> str:
     if not token: return ""
     client = discord.Client()
     key_found = None
+    bot_msg_id = None
 
     @client.event
     async def on_ready():
-        nonlocal key_found
+        nonlocal key_found, bot_msg_id
         guild = client.get_guild(GUILD_ID)
         channel = guild.get_channel(CHANNEL_ID)
+        
         commands = await guild.application_commands()
         bypass_cmd = next((c for c in commands if c.name == "bypass"), None)
+        
         if bypass_cmd:
             await bypass_cmd(channel, url=link)
             await asyncio.sleep(8)
+            
             async for msg in channel.history(limit=10):
-                # Check message content
-                m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", msg.content)
+                full_text = msg.content + " " + str(msg.embeds)
+                m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
                 if m:
                     key_found = m.group(0)
+                    bot_msg_id = msg.id
                     break
-                # Check embeds
-                for embed in msg.embeds:
-                    embed_str = str(embed.to_dict())
-                    m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", embed_str)
-                    if m:
-                        key_found = m.group(0)
-                        break
-                if key_found: break
+        
+        # Auto-delete bypass bot message
+        if bot_msg_id:
+            try:
+                msg_to_delete = await channel.fetch_message(bot_msg_id)
+                await msg_to_delete.delete()
+            except:
+                pass
+        
         await client.close()
 
     await client.start(token)
@@ -68,7 +76,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.5 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.6 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
