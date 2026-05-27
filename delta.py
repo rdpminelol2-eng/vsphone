@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.4 - FINAL WORKING
+Delta Key System v4.5 - FINAL (Fixed Key Detection)
 """
 
 import os, asyncio, re, yaml
 import discord
+import json
 
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
@@ -39,15 +40,24 @@ async def send_real_bypass(link: str) -> str:
         bypass_cmd = next((c for c in commands if c.name == "bypass"), None)
         if bypass_cmd:
             await bypass_cmd(channel, url=link)
-            await asyncio.sleep(6)
-            async for msg in channel.history(limit=8):
+            await asyncio.sleep(8)
+            async for msg in channel.history(limit=10):
+                # Check message content
                 m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", msg.content)
                 if m:
                     key_found = m.group(0)
                     break
+                # Check embeds
+                for embed in msg.embeds:
+                    embed_str = str(embed.to_dict())
+                    m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", embed_str)
+                    if m:
+                        key_found = m.group(0)
+                        break
+                if key_found: break
         await client.close()
 
-    await client.start(token)   # ← Removed bot=False
+    await client.start(token)
     return key_found or ""
 
 def get_key_from_discord(link: str) -> str:
@@ -58,7 +68,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.4 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.5 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
@@ -79,7 +89,7 @@ def main():
             print("\033[96m › Sending real /bypass command...\033[0m")
             key = get_key_from_discord(link)
             if key.startswith("FREE_"):
-                print(f"\033[92m ✔ Key received: {key[:30]}...\033[0m")
+                print(f"\033[92m ✔ Key received: {key}\033[0m")
             else:
                 print("\033[91m ✘ No key received\033[0m")
             input()
