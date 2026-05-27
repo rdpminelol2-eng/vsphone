@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.8 - FINAL (Search "Bypass" + Delete)
+Delta Key System v4.10 - FINAL
 """
 
 import os, asyncio, re, yaml
@@ -43,16 +43,14 @@ async def send_real_bypass(link: str) -> str:
             await bypass_cmd(channel, url=link)
             await asyncio.sleep(10)
             
-            # Get last 3 messages and find the one with "Bypass"
-            messages = [msg async for msg in channel.history(limit=3)]
+            messages = [msg async for msg in channel.history(limit=5)]
             
             for msg in messages:
-                if "bypass" in msg.content.lower() or any("**Bypass Success**" in str(e).lower() for e in msg.embeds):
-                    full_text = msg.content + " " + str(msg.embeds)
+                full_text = msg.content + " " + str(msg.embeds)
+                if "**Bypass Success**" in full_text or "Bypass Success" in full_text:
                     m = re.search(r"FREE_[A-Za-z0-9_\-]{10,}", full_text)
                     if m:
                         key_found = m.group(0)
-                        # Delete the message
                         try:
                             await msg.delete()
                         except:
@@ -72,7 +70,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.8 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.10 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
