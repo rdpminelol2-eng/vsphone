@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delta Key System - FINAL (Simple & Reliable)
+Delta Key System - FINAL
 """
 
 import os, asyncio, re, yaml
@@ -29,7 +29,8 @@ async def send_real_bypass(link: str) -> str:
     token = get_token()
     if not token: return ""
     
-    client = discord.Client()
+    intents = discord.Intents.default()
+    client = discord.Client(intents=intents)
     key_found = None
     
     @client.event
@@ -44,7 +45,6 @@ async def send_real_bypass(link: str) -> str:
         if bypass_cmd:
             await bypass_cmd(channel, url=link)
             
-            # Poll for key
             for _ in range(15):
                 async for msg in channel.history(limit=20):
                     m = KEY_PATTERN.search(msg.content or "")
