@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-Delta Key System v4.2 - FINAL
-Real slash command + Link auto-saved
+Delta Key System v4.3 - FINAL
 """
 
 import os, asyncio, re, yaml
 import discord
-from discord import Intents
 
 TOKEN_FILE = "/storage/emulated/0/Download/token.txt"
 CFG_FILE = os.path.expanduser("~/.delta_key_system.yaml")
@@ -29,7 +27,7 @@ def save_cfg(data):
 async def send_real_bypass(link: str) -> str:
     token = get_token()
     if not token: return ""
-    client = discord.Client(intents=Intents.default())
+    client = discord.Client()
     key_found = None
 
     @client.event
@@ -60,7 +58,7 @@ def main():
     while True:
         os.system("clear")
         print("\033[96m╔════════════════════════════════════════════╗")
-        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.2 - FINAL     \033[0m\033[96m║")
+        print("\033[96m║\033[1m     DELTA KEY SYSTEM v4.3 - FINAL     \033[0m\033[96m║")
         print("\033[96m╚════════════════════════════════════════════╝\033[0m")
         
         link = cfg.get("delta_key_link", "")
@@ -87,7 +85,7 @@ def main():
             input()
         
         elif c == "2":
-            print("Key entering feature coming in next update...")
+            print("Key entering coming soon...")
             input()
         
         elif c == "3":
